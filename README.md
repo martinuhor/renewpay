@@ -4,7 +4,7 @@ RenewPay is a subscription-billing engine for SaaS products, content creators, a
 
 RenewPay is a subscription billing contract for QDay Aevum. A merchant publishes a tUSD8 plan. A subscriber authorizes a session key with a per-period spending cap and an expiry. The first period is collected on subscribe (unless the plan has a trial). Anyone can call `renewSubscription` once the next period is due. Only the subscriber can cancel, and cancellation revokes the session key.
 
-This repository is the week-1 core: `SubscriptionManager`, `SessionKeyRegistry`, Foundry tests, and a Node CLI. It does not include a React app, ERC-4337 paymaster UserOperations, or a webhook server. No paymaster address is configured.
+The contracts and the Node CLI are the week-1 core. The `web` checkout is the merchant and subscriber UI. Subscribe, renew, and cancel are ERC-4337 UserOperations, and QDay’s stablecoin paymaster charges their network fee in tUSD8. Webhook delivery is not part of this checkout.
 
 ## Chain
 
@@ -55,12 +55,43 @@ Week 1 stores the session key address. It does not validate ERC-4337 signatures,
 
 ## Contract addresses
 
-Not deployed to Aevum yet.
+These contracts are live on Aevum. The checkout calls them. Do not redeploy over them.
+
+The live manager was compiled for the Paris EVM. `foundry.toml` still uses Cancun for local tests. A new broadcast from this repo would be a different deployment, and the checkout would not follow it.
 
 | Contract | Address |
 | --- | --- |
-| SubscriptionManager | |
-| SessionKeyRegistry | |
+| SubscriptionManager | [`0x51202A87aFdc07085e9586bc5E30a81a8cC4ff13`](https://explorer-test.qday.info/address/0x51202A87aFdc07085e9586bc5E30a81a8cC4ff13) |
+| SessionKeyRegistry | [`0x5fB5817ABb539C8628b45c0C0eC95797D2C85F26`](https://explorer-test.qday.info/address/0x5fB5817ABb539C8628b45c0C0eC95797D2C85F26) |
+| tUSD8 | [`0x456569838f1d43009A91ebA4263147Afd7233483`](https://explorer-test.qday.info/address/0x456569838f1d43009A91ebA4263147Afd7233483) |
+| EntryPoint v0.7 | [`0x0000000071727De22E5E9d8BAf0edAc6f37da032`](https://explorer-test.qday.info/address/0x0000000071727De22E5E9d8BAf0edAc6f37da032) |
+| Stablecoin paymaster | [`0x8DdF5E51c470257642e2c17E43977901b1173eFa`](https://explorer-test.qday.info/address/0x8DdF5E51c470257642e2c17E43977901b1173eFa) |
+
+Bundler: `https://bundler.qday.info`. It accepts EntryPoint v0.7.
+
+The subscriber account is Kernel v3.1. On Aevum the meta factory is [`0x007Cb4A07296B53eA5e53d043888230797B8FD01`](https://explorer-test.qday.info/address/0x007Cb4A07296B53eA5e53d043888230797B8FD01), the Kernel factory is [`0xaac5D4240AF87249B3f71BC8E4A2cae074A3E419`](https://explorer-test.qday.info/address/0xaac5D4240AF87249B3f71BC8E4A2cae074A3E419), and the ECDSA validator is [`0x845ADb2C711129d4f3966735eD98a9F09fC4cE57`](https://explorer-test.qday.info/address/0x845ADb2C711129d4f3966735eD98a9F09fC4cE57). The ZeroDev meta factory `0xd703aaE79538628d27099B8c4f621bE4CCd142d5` has no code on this chain.
+
+## Checkout
+
+```bash
+cd web
+npm install
+npm test
+npm run dev
+```
+
+Open the printed local URL and connect a wallet on chain id 44005. The page can add the network. It never asks for a private key.
+
+The merchant form opens on the demo plan: **1 tUSD8 per period** (`1000000` base units) and a **2 tUSD8** spending cap (`2000000`). The period defaults to 30 days (`2592000` seconds). Aevum refuses time warps, so the form also has a 120-second period for a renewal in the same sitting. Trial defaults to 0, so subscribe pulls the first period.
+
+The subscriber account is a counterfactual Kernel account owned by the connected wallet. Move tUSD8 onto that account before subscribing. That transfer is a normal wallet transaction, so its fee is tQDAY. A single faucet claim is 5 tUSD8, and the form defaults the move to 3 tUSD8: one subscribe, one renewal, and paymaster gas.
+
+Subscribe, renew, and cancel are UserOperations sent to `https://bundler.qday.info`. Each one names the stablecoin paymaster, so the network fee is tUSD8. The UserOperation approves two finite amounts:
+
+- `100000` base units (0.1 tUSD8) to the paymaster. Live paymaster charges on Aevum have been a few hundred base units.
+- `cap × periods until expiry` to `SubscriptionManager`, the same finite allowance the CLI uses. The manager rejects `type(uint256).max`.
+
+`createPlan` stays a merchant wallet transaction. Its fee is tQDAY. The merchant view lists plans, subscriptions, and renewal logs from the live manager, and it stores a webhook URL in the browser. Signed webhook delivery is a separate service.
 
 ## Test
 
@@ -88,13 +119,13 @@ npm run renewpay -- subscribe --plan-id <planId> --session-key <address> --cap 1
 npm run renewpay -- renew --subscription-id <subscriptionId> --warp-seconds 2592000
 ```
 
-`9990000` is 9.99 tUSD8. `10000000` is a 10 tUSD8 cap. `2592000` is a 30-day period. `--expiry` defaults to 365 days from the latest block. `--warp-seconds` moves time on a local node and is refused on chain id 44005.
+`9990000` is 9.99 tUSD8. `10000000` is a 10 tUSD8 cap. `2592000` is a 30-day period. `--expiry` defaults to 365 days from the latest block. `--warp-seconds` moves time on a local node and is refused on chain id 44005. The Aevum checkout uses a smaller demo, 1 tUSD8 and a 2 tUSD8 cap, because one faucet claim is 5 tUSD8. The CLI commands above stay the local Anvil example, and they pay gas in the node's native token.
 
 `deploy` writes `deployments/latest.json` (gitignored). Later commands read that file when the address env vars are empty.
 
 ## Deploy to Aevum
 
-The deploy needs a funded account. Export `DEPLOYER_PRIVATE_KEY` locally. Do not put it in the repo. No Aevum deployment has been broadcast, so the address table stays empty until one is.
+The addresses in the table above are the live deployment. The checkout uses those addresses. A new broadcast creates a different pair of contracts.
 
 ```bash
 forge script script/Deploy.s.sol \
@@ -129,7 +160,7 @@ forge verify-contract \
   <REGISTRY> src/SessionKeyRegistry.sol:SessionKeyRegistry
 ```
 
-Paste the two addresses into the table above after that deploy. Do not invent them.
+The table above already lists the live deployment. A new broadcast does not replace those addresses.
 
 ## Assumptions
 

@@ -1,6 +1,6 @@
 # Security
 
-Week-1 assumptions for SubscriptionManager and SessionKeyRegistry.
+Assumptions for SubscriptionManager, SessionKeyRegistry, and the checkout.
 
 ## What the contracts enforce
 
@@ -13,14 +13,19 @@ Week-1 assumptions for SubscriptionManager and SessionKeyRegistry.
 - `renewSubscription` is permissionless on purpose. A keeper can collect when the period is due and the checks pass. It cannot collect early, over the cap, after expiry, or after cancellation.
 - Failed renewals revert with a named custom error. The renewal path emits `RenewalFailed` first. The EVM discards logs if the transaction reverts, so off-chain alerts should decode the revert data.
 
-## What week 1 does not do
+## Limits
 
-- Session keys are addresses recorded by the subscriber's own transaction. The contracts do not verify ERC-4337 UserOperation signatures. A subscriber can register any non-zero address. The cap, expiry, finite allowance, and cancellation are the bounds.
-- The stablecoin paymaster is not integrated. There is no paymaster address in this repo. Gas for these calls is paid in the chain's native token (tQDAY on Aevum).
-- No webhook authentication. That is a later service.
+- Session keys are addresses recorded by the subscriber. The contracts do not verify an ERC-4337 signature over that key. A subscriber can register any non-zero address. The cap, expiry, finite allowance, and cancellation are the bounds.
 - The contracts are not upgradeable. There is no owner key that can seize funds or reprice a subscription.
 - Fee-on-transfer and rebasing tokens are not supported. tUSD8 is assumed to transfer the exact amount. A fee-on-transfer token would show a successful pull while the merchant receives less.
 - Sending native tQDAY to either contract sticks there. Neither contract has a withdraw path, and neither accepts native value on purpose.
+
+## Checkout
+
+- The CLI sends ordinary transactions. On Aevum those pay gas in tQDAY.
+- The checkout sends `subscribe`, `renewSubscription`, and `cancelSubscription` as EntryPoint v0.7 UserOperations through `https://bundler.qday.info`. The paymaster is `0x8DdF5E51c470257642e2c17E43977901b1173eFa`. Its `asset()` is tUSD8, and it pulls the network fee from the subscriber account in `postOp`. The UserOperation approves that paymaster for `100000` base units (0.1 tUSD8). That value is finite. The subscription allowance remains `cap × periods until expiry`, and it is also finite. `type(uint256).max` still reverts with `UnlimitedAllowance`.
+- Moving tUSD8 onto the Kernel subscriber account, and `createPlan`, are ordinary wallet transactions. Their network fee is tQDAY.
+- The checkout stores a webhook URL in the browser. Signed delivery is a separate service.
 
 ## Local mock
 

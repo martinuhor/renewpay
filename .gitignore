@@ -5,6 +5,9 @@ broadcast/
 cli/node_modules/
 cli/dist/
 
+web/node_modules/
+web/dist/
+
 .env
 .env.*
 !.env.example
