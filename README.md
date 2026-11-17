@@ -82,7 +82,7 @@ npm run dev
 
 Open the printed local URL and connect a wallet on chain id 44005. The page can add the network. It never asks for a private key.
 
-The live checkout is https://renewpay-checkout.apps.grok.bot. Use that for the five clicks below. The signed webhook inbox is local, because a public https page cannot call `http://127.0.0.1:8787`.
+The live checkout is https://renewpay-checkout.apps.grok.bot. Use that for the five clicks below. The signed webhook inbox stays on your machine. The public page does not call it.
 
 ### Five clicks
 
@@ -105,7 +105,7 @@ cd web
 npm run webhook
 ```
 
-In another terminal, `npm run dev` and use the local page. The inbox verifies `x-qday-signature` (HMAC-SHA256 of the raw JSON body) and stores deliveries in `web/.webhook/inbox.sqlite`. The HMAC secret is created on first run at `web/.webhook/secret`. The process watches public logs and simulates `renewSubscription` after cancel. It does not send transactions and it does not read a private key.
+In another terminal, `npm run dev` and use the local page. The dev server forwards `/inbox` to the webhook process and adds the secret itself, so the browser never talks to port 8787 and the secret is not in the page. The inbox verifies `x-qday-signature` (HMAC-SHA256 of the raw JSON body) and stores deliveries in `web/.webhook/inbox.sqlite`. Reading the inbox requires that same secret. The HMAC secret is created on first run at `web/.webhook/secret`. The process watches public logs and simulates `renewSubscription` after cancel. It does not send transactions and it does not read a private key. A request body larger than 16 KiB is refused before the signature check.
 
 The subscriber account is a counterfactual Kernel account owned by the connected wallet. Move tUSD8 onto that account before subscribing. That transfer is a normal wallet transaction, so its fee is tQDAY. A single faucet claim is 5 tUSD8, and the form defaults the move to 3 tUSD8: one subscribe and one renewal.
 

@@ -23,12 +23,14 @@ import { logWindows } from "./lib/logs";
 import {
   canonicalWebhookBody,
   hmacSha256Hex,
+  inboxTokenMatches,
   webhookSignaturesMatch,
   type WebhookBody,
   type WebhookType,
 } from "./lib/webhook";
 
 const PORT = 8787;
+const MAX_BODY_BYTES = 16_384;
 const dataDir = join(dirname(fileURLToPath(import.meta.url)), "..", ".webhook");
 mkdirSync(dataDir, { recursive: true });
 
@@ -320,35 +322,55 @@ async function scan(): Promise<void> {
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    request.on("data", (chunk: Buffer) => chunks.push(chunk));
-    request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    request.on("error", reject);
+    let size = 0;
+    let failed = false;
+    request.on("data", (chunk: Buffer) => {
+      if (failed) return;
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        failed = true;
+        request.pause();
+        reject(new Error("Body too large."));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => {
+      if (!failed) resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    request.on("error", (error) => {
+      if (!failed) reject(error);
+    });
   });
+}
+
+function inboxAuthorized(request: IncomingMessage): boolean {
+  const header = request.headers["x-renewpay-inbox"];
+  const presented = Array.isArray(header) ? header[0] ?? "" : header ?? "";
+  return inboxTokenMatches(secret, presented);
 }
 
 function send(response: ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload);
-  response.writeHead(status, {
-    "content-type": "application/json",
-    "access-control-allow-origin": "*",
-    "access-control-allow-headers": "content-type, x-qday-signature",
-    "access-control-allow-methods": "GET, POST, OPTIONS",
-  });
+  response.writeHead(status, { "content-type": "application/json" });
   response.end(body);
 }
 
 const server = createServer(async (request, response) => {
-  if (request.method === "OPTIONS") {
-    send(response, 204, {});
-    return;
-  }
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${PORT}`);
   if (request.method === "GET" && url.pathname === "/health") {
-    send(response, 200, { ok: true, hook: `http://127.0.0.1:${PORT}/hook` });
+    send(response, 200, { ok: true });
     return;
   }
   if (request.method === "POST" && url.pathname === "/hook") {
-    const raw = await readBody(request);
+    let raw: string;
+    try {
+      raw = await readBody(request);
+    } catch {
+      send(response, 413, { ok: false, error: "Body too large." });
+      request.destroy();
+      return;
+    }
     const header = request.headers["x-qday-signature"];
     const signature = Array.isArray(header) ? header[0] : header ?? "";
     if (!(await webhookSignaturesMatch(secret, raw, signature))) {
@@ -363,6 +385,10 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === "GET" && url.pathname === "/inbox") {
+    if (!inboxAuthorized(request)) {
+      send(response, 401, { ok: false, error: "Inbox token required." });
+      return;
+    }
     const merchant = url.searchParams.get("merchant");
     const rows = (merchant
       ? db.prepare("select type, body, signature, received_at from events where lower(merchant) = lower(?) order by received_at desc limit 40").all(merchant)

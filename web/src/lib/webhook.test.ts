@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { canonicalWebhookBody, hmacSha256Hex, webhookSignaturesMatch, type WebhookBody } from "./webhook";
+import { canonicalWebhookBody, hmacSha256Hex, inboxTokenMatches, webhookSignaturesMatch, type WebhookBody } from "./webhook";
 
 const sample: WebhookBody = {
   id: "0xabc:1",
@@ -26,5 +26,13 @@ describe("webhook signatures", () => {
     const tampered = canonicalWebhookBody({ ...sample, amount: "2000000" });
     assert.equal(await webhookSignaturesMatch(secret, tampered, signature), false);
     assert.equal(await webhookSignaturesMatch("other-secret", body, signature), false);
+  });
+
+  it("rejects a missing or wrong inbox token", () => {
+    assert.equal(inboxTokenMatches("local-secret", "local-secret"), true);
+    assert.equal(inboxTokenMatches("local-secret", "local-secreT"), false);
+    assert.equal(inboxTokenMatches("local-secret", ""), false);
+    assert.equal(inboxTokenMatches("", "local-secret"), false);
+    assert.equal(inboxTokenMatches("local-secret", "local-secret-extra"), false);
   });
 });

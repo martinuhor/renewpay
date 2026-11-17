@@ -49,6 +49,16 @@ export async function hmacSha256Hex(secret: string, body: string): Promise<strin
   return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** Constant-time compare for the local inbox token. Empty and mismatched lengths fail. */
+export function inboxTokenMatches(expected: string, presented: string): boolean {
+  if (expected.length === 0 || expected.length !== presented.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < expected.length; index += 1) {
+    mismatch |= expected.charCodeAt(index) ^ presented.charCodeAt(index);
+  }
+  return mismatch === 0;
+}
+
 export async function webhookSignaturesMatch(secret: string, body: string, header: string): Promise<boolean> {
   const expected = await hmacSha256Hex(secret, body);
   const actual = header.trim().toLowerCase().replace(/^0x/, "");

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
-import { WEBHOOK_INBOX } from "./lib/chain";
 import type { WebhookBody } from "./lib/webhook";
 
 type InboxEvent = {
@@ -18,16 +17,23 @@ const LABELS: Record<string, string> = {
   "subscription.paymentFailed": "Renewal stopped",
 };
 
+function isLocalCheckout(): boolean {
+  const host = window.location.hostname;
+  return host === "127.0.0.1" || host === "localhost";
+}
+
 export function Inbox({ merchant }: { merchant: Address | null }) {
+  const localInbox = isLocalCheckout();
   const [events, setEvents] = useState<InboxEvent[] | null>(null);
-  const [offline, setOffline] = useState(false);
+  const [offline, setOffline] = useState(!localInbox);
 
   useEffect(() => {
+    if (!localInbox) return;
     let stop = false;
     async function poll() {
       try {
         const query = merchant ? `?merchant=${merchant}` : "";
-        const response = await fetch(`${WEBHOOK_INBOX}/inbox${query}`);
+        const response = await fetch(`/inbox${query}`);
         if (!response.ok) throw new Error("Inbox unavailable.");
         const body = (await response.json()) as { events: InboxEvent[] };
         if (!stop) {
@@ -44,14 +50,18 @@ export function Inbox({ merchant }: { merchant: Address | null }) {
       stop = true;
       clearInterval(timer);
     };
-  }, [merchant]);
+  }, [localInbox, merchant]);
 
   return (
     <div className="inbox">
       <h3>Signed webhook inbox</h3>
-      {offline || events === null ? (
+      {!localInbox ? (
         <p className="lede">
-          The chain lists above are enough for the five clicks. For the signed inbox, run <code>cd web && npm run webhook</code> and open the local checkout with <code>npm run dev</code>. The public https page cannot call http://127.0.0.1:8787.
+          The chain lists above are enough for the five clicks. The signed inbox stays on your machine. Run <code>cd web && npm run webhook</code>, then open the checkout with <code>npm run dev</code>. This page does not call it.
+        </p>
+      ) : offline || events === null ? (
+        <p className="lede">
+          Inbox is not running. Start it with <code>cd web && npm run webhook</code> in another terminal.
         </p>
       ) : events.length === 0 ? (
         <p className="lede">Inbox is up. Deliveries show up here after subscribe, renew, and cancel.</p>
