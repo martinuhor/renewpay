@@ -1,4 +1,5 @@
-import { createPublicClient, createWalletClient, custom, http, type Address, type EIP1193Provider, type WalletClient } from "viem";
+import { decodeErrorResult, type Address, type EIP1193Provider, type Hex, type WalletClient, createPublicClient, createWalletClient, custom, http } from "viem";
+import { managerAbi } from "./abi";
 import { createBundlerClient, type BundlerClient } from "viem/account-abstraction";
 import { toKernelSmartAccount } from "permissionless/accounts";
 import {
@@ -85,13 +86,38 @@ export async function ensureAevum(ethereum: EthereumProvider): Promise<void> {
   }
 }
 
+function namedRevert(data: unknown): string | null {
+  if (!data || typeof data !== "object" || !("errorName" in data)) return null;
+  const name = (data as { errorName?: unknown }).errorName;
+  if (typeof name !== "string" || name.length === 0) return null;
+  const args = (data as { args?: unknown }).args;
+  if (!Array.isArray(args) || args.length === 0) return name;
+  const rendered = args.map((arg) => (typeof arg === "bigint" ? arg.toString() : String(arg))).join(", ");
+  return `${name}(${rendered})`;
+}
+
+function revertDataName(data: unknown): string | null {
+  const named = namedRevert(data);
+  if (named) return named;
+  if (typeof data !== "string" || !data.startsWith("0x") || data.length < 10) return null;
+  try {
+    const decoded = decodeErrorResult({ abi: managerAbi, data: data as Hex });
+    return namedRevert(decoded) ?? decoded.errorName;
+  } catch {
+    return null;
+  }
+}
+
+/** Prefer the Solidity custom error. Aevum's RPC text hides it behind "unknown reason". */
 export function formatChainError(error: unknown): string {
   const parts: string[] = [];
   const seen = new Set<unknown>();
   let current: unknown = error;
   while (current && typeof current === "object" && !seen.has(current)) {
     seen.add(current);
-    const record = current as { shortMessage?: unknown; details?: unknown; message?: unknown; cause?: unknown };
+    const record = current as { data?: unknown; shortMessage?: unknown; details?: unknown; message?: unknown; cause?: unknown };
+    const name = revertDataName(record.data);
+    if (name) return name;
     if (typeof record.shortMessage === "string") parts.push(record.shortMessage);
     if (typeof record.details === "string" && record.details.trim()) parts.push(record.details.trim());
     current = record.cause;

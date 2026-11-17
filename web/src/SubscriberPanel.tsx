@@ -405,7 +405,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
             {!subscription.cancelled && !renewReady ? (
               <p className="note">Renew unlocks in {Math.max(secondsLeft, 0)}s. Leave this tab open.</p>
             ) : null}
-            {stopReason ? <p className="note">{stopReason}</p> : null}
+            {stopReason ? <p className="error">{stopReason}</p> : null}
           </>
         ) : (
           <p className="lede">The next billing date appears here after subscribe.</p>
