@@ -19,8 +19,9 @@ export const SESSION_KEY_REGISTRY = getAddress("0x5fB5817ABb539C8628b45c0C0eC957
 export const ENTRY_POINT = getAddress(entryPoint07Address);
 
 /**
- * QDay stablecoin paymaster. `asset()` is tUSD8. UserOperations that name it
- * pay their network fee in tUSD8. The paymaster forwards that fee to its treasury.
+ * QDay stablecoin paymaster. `asset()` is tUSD8, but validation only accepts a
+ * plain tUSD8 transfer or a call to 0xf45e7f39caba1d2055f613970575a7e7069636be.
+ * It reverts on SubscriptionManager, so this checkout does not name it.
  */
 export const STABLECOIN_PAYMASTER = getAddress("0x8DdF5E51c470257642e2c17E43977901b1173eFa");
 
@@ -58,6 +59,8 @@ export const DEMO_SHORT_PERIOD_SECONDS = 120n;
 export const DEMO_TRIAL_SECONDS = 0n;
 export const DEMO_METADATA = "Pro Plan — 1 tUSD8 / period";
 export const DEMO_FUND = 3_000_000n;
+/** EntryPoint deposit for deploying the subscriber account and paying its UserOperations. */
+export const DEMO_GAS_DEPOSIT = 50_000_000_000_000_000n;
 export const YEAR_SECONDS = 365n * 24n * 60n * 60n;
 
 export const aevum = defineChain({

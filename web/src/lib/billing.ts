@@ -12,7 +12,6 @@ import {
 import { erc20Abi, managerAbi } from "./abi";
 import {
   PAYMASTER_GAS_ALLOWANCE,
-  STABLECOIN_PAYMASTER,
   SUBSCRIPTION_MANAGER,
   TUSD8,
   TUSD8_DECIMALS,
@@ -162,20 +161,18 @@ export function subscribeCalls(input: {
   expiry: bigint;
   now: bigint;
   periodSeconds: bigint;
-}): { calls: Call[]; subscriptionAllowance: bigint; paymasterAllowance: bigint } {
+}): { calls: Call[]; subscriptionAllowance: bigint } {
   const allowance = subscriptionAllowance(input.cap, input.now, input.expiry, input.periodSeconds);
-  const gasAllowance = paymasterGasAllowance();
   const calls = [
-    approve(STABLECOIN_PAYMASTER, gasAllowance),
     approve(SUBSCRIPTION_MANAGER, allowance),
     managerCall("subscribe", [input.planId, input.sessionKey, input.cap, input.expiry]),
   ];
   assertFiniteApprovals(calls);
-  return { calls, subscriptionAllowance: allowance, paymasterAllowance: gasAllowance };
+  return { calls, subscriptionAllowance: allowance };
 }
 
 export function renewCalls(subscriptionId: Hex, replaceManagerAllowance: bigint | null): Call[] {
-  const calls: Call[] = [approve(STABLECOIN_PAYMASTER, paymasterGasAllowance())];
+  const calls: Call[] = [];
   if (replaceManagerAllowance !== null) {
     if (replaceManagerAllowance >= MAX_UINT256) throw new Error("Refusing an unlimited tUSD8 allowance.");
     calls.push(approve(SUBSCRIPTION_MANAGER, replaceManagerAllowance));
@@ -186,10 +183,7 @@ export function renewCalls(subscriptionId: Hex, replaceManagerAllowance: bigint 
 }
 
 export function cancelCalls(subscriptionId: Hex): Call[] {
-  const calls = [
-    approve(STABLECOIN_PAYMASTER, paymasterGasAllowance()),
-    managerCall("cancelSubscription", [subscriptionId]),
-  ];
+  const calls = [managerCall("cancelSubscription", [subscriptionId])];
   assertFiniteApprovals(calls);
   return calls;
 }

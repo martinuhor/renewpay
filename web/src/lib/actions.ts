@@ -12,7 +12,10 @@ import {
   type Call,
 } from "./billing";
 import {
+  DEMO_GAS_DEPOSIT,
   DEPLOY_BLOCK,
+  ENTRY_POINT,
+  aevum,
   STABLECOIN_PAYMASTER,
   SUBSCRIPTION_MANAGER,
   TUSD8,
@@ -101,6 +104,10 @@ function asSubscription(value: unknown): Subscription {
 async function sendUserOperation(ethereum: EthereumProvider, calls: readonly Call[]): Promise<Hash> {
   await ensureAevum(ethereum);
   const account = await subscriberAccount(ethereum);
+  const deposit = await readDeposit(await account.getAddress());
+  if (deposit === 0n) {
+    throw new Error("Deposit 0.05 tQDAY for gas first. The stablecoin paymaster does not sponsor this contract.");
+  }
   const bundler = userOpClient(account);
   const callData = await account.encodeCalls(calls.map((call) => ({ to: call.to, data: call.data, value: call.value })));
   const hash = await bundler.sendUserOperation({ account, callData });
@@ -177,6 +184,50 @@ export async function createPlan(input: {
   if (receipt.status !== "success") throw new Error("createPlan reverted.");
   const planId = simulation.result;
   return { hash, planId };
+}
+
+const entryPointAbi = [
+  {
+    type: "function",
+    name: "depositTo",
+    stateMutability: "payable",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+export async function readDeposit(account: Address): Promise<bigint> {
+  return publicClient.readContract({
+    address: ENTRY_POINT,
+    abi: entryPointAbi,
+    functionName: "balanceOf",
+    args: [account],
+  });
+}
+
+/** Wallet transaction. Puts tQDAY on the subscriber account's EntryPoint balance. */
+export async function depositGas(input: { ethereum: EthereumProvider; from: Address; account: Address }): Promise<Hash> {
+  await ensureAevum(input.ethereum);
+  const wallet = walletClientFor(input.ethereum, input.from);
+  const hash = await wallet.writeContract({
+    account: input.from,
+    chain: aevum,
+    address: ENTRY_POINT,
+    abi: entryPointAbi,
+    functionName: "depositTo",
+    args: [input.account],
+    value: DEMO_GAS_DEPOSIT,
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("The gas deposit reverted.");
+  return hash;
 }
 
 export async function fundSubscriber(input: {

@@ -57,8 +57,8 @@ export function DemoGuide({ address }: { address: Address | null }) {
   const steps = [
     { done: rightWallet && hasGas, text: `Connect ${short(DEMO_MERCHANT)}. That wallet already has the tQDAY for the two normal transactions and the tUSD8 for the subscription.` },
     { done: planReady, text: "On Merchant, leave the form as it is (1 tUSD8, 120 seconds) and click Create plan. Confirm in the wallet. The fee is a little tQDAY." },
-    { done: marks.funded.length > 0 && marks.subscribed.length > 0, text: "Open Subscriber, same wallet. Click Move 3 tUSD8, then Subscribe. Confirm both. Subscribe’s network fee is tUSD8." },
-    { done: marks.renewed === "1", text: "When the Billing timer reaches zero, click Renew and confirm. Another 1 tUSD8 moves. The fee is tUSD8." },
+    { done: marks.funded.length > 0 && marks.subscribed.length > 0, text: "Open Subscriber. Click Deposit 0.05 tQDAY, then Subscribe. The paymaster rejected this contract, so the network fee is that deposit. The 1 tUSD8 still moves to the merchant." },
+    { done: marks.renewed === "1", text: "When the Billing timer reaches zero, click Renew and confirm. Another 1 tUSD8 moves." },
     { done: marks.cancelled === "1", text: "Click Cancel, then Show why a renewal stops. The reason should be SubscriptionIsCancelled." },
   ];
 

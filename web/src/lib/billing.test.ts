@@ -86,21 +86,19 @@ describe("user operation calls", () => {
       now,
       periodSeconds: period,
     });
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 2);
     assert.equal(calls[0]?.to, TUSD8);
-    assert.equal(calls[1]?.to, TUSD8);
-    assert.equal(calls[2]?.to, SUBSCRIPTION_MANAGER);
+    assert.equal(calls[1]?.to, SUBSCRIPTION_MANAGER);
     assert.ok(calls[0]?.data.startsWith("0x095ea7b3"));
-    assert.equal(BigInt(`0x${calls[0]?.data.slice(10 + 64)}`), 100_000n);
-    assert.equal(BigInt(`0x${calls[1]?.data.slice(10 + 64)}`), allowance);
-    assert.ok(calls[2]?.data.startsWith("0x6ce07b7a"));
+    assert.equal(BigInt(`0x${calls[0]?.data.slice(10 + 64)}`), allowance);
+    assert.ok(calls[1]?.data.startsWith("0x6ce07b7a"));
     assertFiniteApprovals(calls);
     const direct = encodeFunctionData({
       abi: managerAbi,
       functionName: "subscribe",
       args: [planId, sessionKey, 2_000_000n, expiry],
     });
-    assert.equal(calls[2]?.data, direct);
+    assert.equal(calls[1]?.data, direct);
     assert.ok(direct.startsWith("0x6ce07b7a"));
   });
 
@@ -109,8 +107,8 @@ describe("user operation calls", () => {
     const renew = renewCalls(id, null);
     assert.ok(renew.at(-1)?.data.startsWith("0x391a20a7"));
     const replaced = renewCalls(id, 4_000_000n);
-    assert.equal(replaced.length, 3);
-    assert.equal(BigInt(`0x${replaced[1]?.data.slice(10 + 64)}`), 4_000_000n);
+    assert.equal(replaced.length, 2);
+    assert.equal(BigInt(`0x${replaced[0]?.data.slice(10 + 64)}`), 4_000_000n);
     assert.throws(() => renewCalls(id, MAX_UINT256), /unlimited/i);
     const cancel = cancelCalls(id);
     assert.ok(cancel.at(-1)?.data.startsWith("0xd21f1ffc"));

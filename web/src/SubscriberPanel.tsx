@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { formatEther, getAddress, isAddress, isHex, type Address, type Hex } from "viem";
 import {
   cancel,
+  depositGas,
   formatChainError,
   fundSubscriber,
-  gasAllowance,
   readBalances,
+  readDeposit,
   readPlan,
   readSubscription,
   renew,
@@ -26,7 +27,7 @@ import {
 import {
   DEMO_CAP,
   DEMO_FUND,
-  STABLECOIN_PAYMASTER,
+  DEMO_GAS_DEPOSIT,
   SUBSCRIPTION_MANAGER,
   YEAR_SECONDS,
   explorerAddress,
@@ -61,6 +62,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   const [ownerBalance, setOwnerBalance] = useState<bigint | null>(null);
   const [subscriberBalance, setSubscriberBalance] = useState<bigint | null>(null);
   const [native, setNative] = useState<bigint | null>(null);
+  const [deposit, setDeposit] = useState<bigint | null>(null);
   const [now, setNow] = useState<bigint>(BigInt(Math.floor(Date.now() / 1000)));
   const [status, setStatus] = useState<string | null>(null);
   const [tx, setTx] = useState<string | null>(null);
@@ -99,11 +101,16 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         const address = await account.getAddress();
         if (cancelled) return;
         setSubscriber(address);
-        const [walletBalances, accountBalances] = await Promise.all([readBalances(owner), readBalances(address)]);
+        const [walletBalances, accountBalances, gasDeposit] = await Promise.all([
+          readBalances(owner),
+          readBalances(address),
+          readDeposit(address),
+        ]);
         if (cancelled) return;
         setOwnerBalance(walletBalances.token);
         setNative(walletBalances.native);
         setSubscriberBalance(accountBalances.token);
+        setDeposit(gasDeposit);
       } catch (cause) {
         if (!cancelled) setError(formatChainError(cause));
       }
@@ -162,6 +169,22 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     }
   }
 
+  async function onDeposit() {
+    if (!ethereum || !owner || !subscriber) return;
+    setPending(true);
+    setError(null);
+    try {
+      const hash = await depositGas({ ethereum, from: owner, account: subscriber });
+      setTx(hash);
+      setDeposit(await readDeposit(subscriber));
+      setStatus("0.05 tQDAY is deposited for this account's network fees. Subscribe next.");
+    } catch (cause) {
+      setError(formatChainError(cause));
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function onFund() {
     if (!ethereum || !owner || !subscriber) return;
     setPending(true);
@@ -195,7 +218,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         periodSeconds: plan.periodSeconds,
       });
       setTx(hash);
-      setStatus("Subscribed. The first 1 tUSD8 moved to you, and the network fee was tUSD8. Wait for the timer, then renew.");
+      setStatus("Subscribed. The first 1 tUSD8 moved to the merchant. Wait for the timer, then renew.");
       if (predictedId) {
         markDemo(DEMO_SUBSCRIPTION_KEY, predictedId);
         await refreshSubscription(predictedId);
@@ -222,7 +245,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
       });
       setTx(hash);
       markDemo(DEMO_RENEWED_KEY, "1");
-      setStatus("Renewed. Another 1 tUSD8 moved, and the network fee was tUSD8. Cancel next.");
+      setStatus("Renewed. Another 1 tUSD8 moved to the merchant. Cancel next.");
       await refreshSubscription(subscriptionId);
     } catch (cause) {
       setError(formatChainError(cause));
@@ -239,7 +262,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
       const hash = await cancel(ethereum, subscriptionId);
       setTx(hash);
       markDemo(DEMO_CANCELLED_KEY, "1");
-      setStatus("Cancelled. Click Show why a renewal stops.");
+      setStatus("Cancelled. The network fee came from the tQDAY deposit. Click Show why a renewal stops.");
       await refreshSubscription(subscriptionId);
     } catch (cause) {
       setError(formatChainError(cause));
@@ -268,7 +291,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     <div className="grid">
       <section className="card">
         <h2>Subscribe</h2>
-        <p className="lede">Use the same wallet. Move 3 tUSD8, then subscribe. Gas for subscribe, renew, and cancel is tUSD8 through the paymaster at {short(STABLECOIN_PAYMASTER)}.</p>
+        <p className="lede">Use the same wallet. The 3 tUSD8 is already on the subscriber account. QDay’s paymaster refused the subscribe call, so deposit 0.05 tQDAY and try Subscribe again. The subscription payment is still tUSD8.</p>
         <label>
           Plan id
           <input value={planId} onChange={(event) => setPlanId(event.target.value.trim())} spellCheck={false} />
@@ -314,8 +337,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
           <input value={expiryDays} onChange={(event) => setExpiryDays(event.target.value)} inputMode="numeric" />
         </label>
         <div className="note">
-          Subscription allowance {allowancePreview ?? "—"} tUSD8. That figure is the cap multiplied by the periods until expiry.
-          Paymaster allowance {formatTusd(gasAllowance())} tUSD8. Both approvals are finite.
+          Subscription allowance {allowancePreview ?? "—"} tUSD8. That figure is the cap multiplied by the periods until expiry, and it is finite.
         </div>
         {subscriber ? (
           <p className="mono">Subscriber account {subscriber}</p>
@@ -329,15 +351,20 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
           <dd>{native === null ? "—" : formatEther(native)}</dd>
           <dt>Subscriber tUSD8</dt>
           <dd>{subscriberBalance === null ? "—" : formatTusd(subscriberBalance)}</dd>
+          <dt>Gas deposit, tQDAY</dt>
+          <dd>{deposit === null ? "—" : formatEther(deposit)}</dd>
         </dl>
         <label>
           Move tUSD8 onto the subscriber account
           <input value={fund} onChange={(event) => setFund(event.target.value)} inputMode="numeric" />
         </label>
-        <p className="warn">That transfer is a wallet transaction, so its network fee is tQDAY. Default is 3 tUSD8: the first period, one renewal, and paymaster gas.</p>
+        <p className="warn">That transfer is a wallet transaction, so its network fee is tQDAY. Default is 3 tUSD8: the first period and one renewal. Do not move it again if the account already holds 3 tUSD8.</p>
         <div className="actions">
           <button className="ghost" type="button" disabled={pending || !subscriber} onClick={() => void onFund()}>Move 3 tUSD8</button>
-          <button className="primary" type="button" disabled={pending || !plan || !subscriber} onClick={() => void onSubscribe()}>
+          <button className="primary" type="button" disabled={pending || !subscriber} onClick={() => void onDeposit()}>
+            Deposit {formatEther(DEMO_GAS_DEPOSIT)} tQDAY
+          </button>
+          <button className="primary" type="button" disabled={pending || !plan || !subscriber || deposit === 0n} onClick={() => void onSubscribe()}>
             {pending ? "Working…" : "Subscribe"}
           </button>
         </div>

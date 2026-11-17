@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, custom, http, type Address, type EIP1193Provider, type Hex, type WalletClient } from "viem";
+import { createPublicClient, createWalletClient, custom, http, type Address, type EIP1193Provider, type WalletClient } from "viem";
 import { createBundlerClient, type BundlerClient } from "viem/account-abstraction";
 import { toKernelSmartAccount } from "permissionless/accounts";
 import {
@@ -10,19 +10,9 @@ import {
   KERNEL_ECDSA_VALIDATOR,
   KERNEL_FACTORY,
   KERNEL_META_FACTORY,
-  PAYMASTER_POST_OP_GAS,
-  PAYMASTER_VERIFICATION_GAS,
-  STABLECOIN_PAYMASTER,
 } from "./chain";
 
 export type KernelAccount = Awaited<ReturnType<typeof toKernelSmartAccount>>;
-
-const paymasterFields = {
-  paymaster: STABLECOIN_PAYMASTER,
-  paymasterData: "0x" as Hex,
-  paymasterVerificationGasLimit: PAYMASTER_VERIFICATION_GAS,
-  paymasterPostOpGasLimit: PAYMASTER_POST_OP_GAS,
-};
 
 export const publicClient = createPublicClient({
   chain: aevum,
@@ -66,14 +56,6 @@ export function userOpClient(account: KernelAccount): BundlerClient {
     chain: aevum,
     client: publicClient,
     transport: http(AEVUM_BUNDLER),
-    paymaster: {
-      async getPaymasterData() {
-        return paymasterFields;
-      },
-      async getPaymasterStubData() {
-        return paymasterFields;
-      },
-    },
   });
 }
 
