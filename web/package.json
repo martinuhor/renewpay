@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "tsx --test src/lib/billing.test.ts"
+    "test": "tsx --test src/lib/billing.test.ts src/lib/logs.test.ts src/lib/webhook.test.ts",
+    "webhook": "tsx src/webhook-server.ts"
   },
   "dependencies": {
     "permissionless": "^0.5.2",

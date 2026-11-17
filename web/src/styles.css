@@ -205,6 +205,45 @@ dd { margin: 0; overflow-wrap: anywhere; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
+.guide { margin-bottom: 16px; }
+
+.steps {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 1.7rem 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.mark-step {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+}
+
+.mark-step.on {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+}
+
+.inbox { margin-top: 18px; }
+.inbox code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+}
+
 @media (max-width: 800px) {
   header.top { flex-direction: column; align-items: flex-start; }
   .wallet { align-items: flex-start; }

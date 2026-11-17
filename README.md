@@ -82,7 +82,30 @@ npm run dev
 
 Open the printed local URL and connect a wallet on chain id 44005. The page can add the network. It never asks for a private key.
 
-The merchant form opens on the demo plan: **1 tUSD8 per period** (`1000000` base units) and a **2 tUSD8** spending cap (`2000000`). The period defaults to 30 days (`2592000` seconds). Aevum refuses time warps, so the form also has a 120-second period for a renewal in the same sitting. Trial defaults to 0, so subscribe pulls the first period.
+The live checkout is https://renewpay-checkout.apps.grok.bot. Use that for the five clicks below. The signed webhook inbox is local, because a public https page cannot call `http://127.0.0.1:8787`.
+
+### Five clicks
+
+Use wallet `0xCDB8793ec57DcdcC432CA083792dE9fb78d46750`. It holds the demo tUSD8 and enough tQDAY for the two ordinary transactions. One wallet is both merchant and subscriber: the subscriber is the Kernel account derived from it.
+
+1. Connect that wallet.
+2. On Merchant, leave the form at 1 tUSD8 and 120 seconds. Click **Create plan** and confirm. The fee is tQDAY.
+3. Open Subscriber. Click **Move 3 tUSD8**, then **Subscribe**. Confirm both. Subscribe, renew, and cancel charge their network fee in tUSD8.
+4. When the timer hits zero, click **Renew**.
+5. Click **Cancel**, then **Show why a renewal stops**. The revert is `SubscriptionIsCancelled`.
+
+Aevum has no time warp. The form defaults to 120 seconds so a renewal fits in one sitting. The 30-day preset is the monthly plan. Trial defaults to 0, so subscribe pulls the first period. The spending cap stays 2 tUSD8 (`2000000` base units).
+
+History reads are split into 1,000-block `eth_getLogs` windows. Aevum rejects a wider range.
+
+### Signed inbox
+
+```bash
+cd web
+npm run webhook
+```
+
+In another terminal, `npm run dev` and use the local page. The inbox verifies `x-qday-signature` (HMAC-SHA256 of the raw JSON body) and stores deliveries in `web/.webhook/inbox.sqlite`. The HMAC secret is created on first run at `web/.webhook/secret`. The process watches public logs and simulates `renewSubscription` after cancel. It does not send transactions and it does not read a private key.
 
 The subscriber account is a counterfactual Kernel account owned by the connected wallet. Move tUSD8 onto that account before subscribing. That transfer is a normal wallet transaction, so its fee is tQDAY. A single faucet claim is 5 tUSD8, and the form defaults the move to 3 tUSD8: one subscribe, one renewal, and paymaster gas.
 
@@ -91,7 +114,7 @@ Subscribe, renew, and cancel are UserOperations sent to `https://bundler.qday.in
 - `100000` base units (0.1 tUSD8) to the paymaster. Live paymaster charges on Aevum have been a few hundred base units.
 - `cap × periods until expiry` to `SubscriptionManager`, the same finite allowance the CLI uses. The manager rejects `type(uint256).max`.
 
-`createPlan` stays a merchant wallet transaction. Its fee is tQDAY. The merchant view lists plans, subscriptions, and renewal logs from the live manager, and it stores a webhook URL in the browser. Signed webhook delivery is a separate service.
+`createPlan` stays a merchant wallet transaction. Its fee is tQDAY. The merchant view lists plans, subscriptions, and renewal logs from the live manager. `npm run webhook` is the signed inbox described above.
 
 ## Test
 

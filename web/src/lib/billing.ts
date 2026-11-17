@@ -29,6 +29,19 @@ export function formatTusd(amount: bigint): string {
   return formatUnits(amount, TUSD8_DECIMALS);
 }
 
+export function formatPeriod(seconds: bigint): string {
+  if (seconds === 120n) return "2 minutes";
+  if (seconds > 0n && seconds % 86_400n === 0n) {
+    const days = seconds / 86_400n;
+    return days === 1n ? "1 day" : `${days.toString()} days`;
+  }
+  if (seconds > 0n && seconds % 60n === 0n) {
+    const minutes = seconds / 60n;
+    return minutes === 1n ? "1 minute" : `${minutes.toString()} minutes`;
+  }
+  return `${seconds.toString()} seconds`;
+}
+
 export function parseTusdInput(raw: string): bigint {
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) throw new Error("Enter a non-negative integer.");

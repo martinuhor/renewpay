@@ -9,12 +9,14 @@ import {
   readPlan,
   readSubscription,
   renew,
+  renewalRevert,
   subscribe,
   type Plan,
   type Subscription,
 } from "./lib/actions";
 import { subscriberAccount } from "./lib/account";
 import {
+  formatPeriod,
   formatTusd,
   parseTusdInput,
   randomSessionKey,
@@ -30,9 +32,9 @@ import {
   explorerAddress,
   explorerTx,
 } from "./lib/chain";
+import { DEMO_CANCELLED_KEY, DEMO_FUNDED_KEY, DEMO_PLAN_KEY, DEMO_RENEWED_KEY, DEMO_SUBSCRIPTION_KEY, markDemo } from "./lib/demo";
 
 const SESSION_KEY = "renewpay.sessionKey";
-const PLAN_KEY = "renewpay.planId";
 
 function short(value: string): string {
   return `${value.slice(0, 8)}…${value.slice(-4)}`;
@@ -64,10 +66,28 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   const [tx, setTx] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [stopReason, setStopReason] = useState<string | null>(null);
+  const [clock, setClock] = useState(() => Math.floor(Date.now() / 1000));
 
   useEffect(() => {
     setSessionKey(loadSessionKey());
-    setPlanId(localStorage.getItem(PLAN_KEY) ?? "");
+    const saved = localStorage.getItem(DEMO_PLAN_KEY) ?? "";
+    setPlanId(saved);
+    if (!isHex(saved) || saved.length !== 66) return;
+    let stop = false;
+    void readPlan(saved)
+      .then((next) => {
+        if (!stop) setPlan(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      stop = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -122,7 +142,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     try {
       const next = await readPlan(planId);
       setPlan(next);
-      localStorage.setItem(PLAN_KEY, planId);
+      markDemo(DEMO_PLAN_KEY, planId);
       setNow(BigInt(Math.floor(Date.now() / 1000)));
     } catch (cause) {
       setPlan(null);
@@ -149,7 +169,8 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     try {
       const hash = await fundSubscriber({ ethereum, from: owner, to: subscriber, amount: parseTusdInput(fund) });
       setTx(hash);
-      setStatus("tUSD8 is on the subscriber account. The transfer’s network fee was tQDAY.");
+      markDemo(DEMO_FUNDED_KEY, hash);
+      setStatus("3 tUSD8 is on the subscriber account. That transfer’s fee was tQDAY. Subscribe next.");
       const [walletBalances, accountBalances] = await Promise.all([readBalances(owner), readBalances(subscriber)]);
       setOwnerBalance(walletBalances.token);
       setSubscriberBalance(accountBalances.token);
@@ -174,8 +195,11 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         periodSeconds: plan.periodSeconds,
       });
       setTx(hash);
-      setStatus("Subscribed. The UserOperation network fee was charged in tUSD8.");
-      if (predictedId) await refreshSubscription(predictedId);
+      setStatus("Subscribed. The first 1 tUSD8 moved to you, and the network fee was tUSD8. Wait for the timer, then renew.");
+      if (predictedId) {
+        markDemo(DEMO_SUBSCRIPTION_KEY, predictedId);
+        await refreshSubscription(predictedId);
+      }
     } catch (cause) {
       setError(formatChainError(cause));
     } finally {
@@ -197,7 +221,8 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         periodSeconds: subscription.periodSeconds,
       });
       setTx(hash);
-      setStatus("Renewed. The UserOperation network fee was charged in tUSD8.");
+      markDemo(DEMO_RENEWED_KEY, "1");
+      setStatus("Renewed. Another 1 tUSD8 moved, and the network fee was tUSD8. Cancel next.");
       await refreshSubscription(subscriptionId);
     } catch (cause) {
       setError(formatChainError(cause));
@@ -213,7 +238,8 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     try {
       const hash = await cancel(ethereum, subscriptionId);
       setTx(hash);
-      setStatus("Cancelled. The session key is revoked, and the network fee was charged in tUSD8.");
+      markDemo(DEMO_CANCELLED_KEY, "1");
+      setStatus("Cancelled. Click Show why a renewal stops.");
       await refreshSubscription(subscriptionId);
     } catch (cause) {
       setError(formatChainError(cause));
@@ -222,13 +248,27 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     }
   }
 
-  const renewReady = Boolean(subscription && !subscription.cancelled && now >= subscription.paidUntil);
+  const renewReady = Boolean(subscription && !subscription.cancelled && BigInt(clock) >= subscription.paidUntil);
+  const secondsLeft = subscription && !subscription.cancelled ? Number(subscription.paidUntil) - clock : 0;
+
+  async function onExplain() {
+    if (!subscriptionId) return;
+    setPending(true);
+    setError(null);
+    try {
+      setStopReason(await renewalRevert(subscriptionId));
+    } catch (cause) {
+      setError(formatChainError(cause));
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <div className="grid">
       <section className="card">
         <h2>Subscribe</h2>
-        <p className="lede">Gas for subscribe, renew, and cancel is tUSD8, paid through the stablecoin paymaster at {short(STABLECOIN_PAYMASTER)}.</p>
+        <p className="lede">Use the same wallet. Move 3 tUSD8, then subscribe. Gas for subscribe, renew, and cancel is tUSD8 through the paymaster at {short(STABLECOIN_PAYMASTER)}.</p>
         <label>
           Plan id
           <input value={planId} onChange={(event) => setPlanId(event.target.value.trim())} spellCheck={false} />
@@ -239,7 +279,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         {plan ? (
           <dl>
             <dt>Price</dt>
-            <dd>{formatTusd(plan.amount)} tUSD8 / {plan.periodSeconds.toString()}s</dd>
+            <dd>{formatTusd(plan.amount)} tUSD8 / {formatPeriod(plan.periodSeconds)}</dd>
             <dt>Merchant</dt>
             <dd><a href={explorerAddress(plan.merchant)}>{plan.merchant}</a></dd>
             <dt>Trial</dt>
@@ -296,7 +336,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         </label>
         <p className="warn">That transfer is a wallet transaction, so its network fee is tQDAY. Default is 3 tUSD8: the first period, one renewal, and paymaster gas.</p>
         <div className="actions">
-          <button className="ghost" type="button" disabled={pending || !subscriber} onClick={() => void onFund()}>Move tUSD8</button>
+          <button className="ghost" type="button" disabled={pending || !subscriber} onClick={() => void onFund()}>Move 3 tUSD8</button>
           <button className="primary" type="button" disabled={pending || !plan || !subscriber} onClick={() => void onSubscribe()}>
             {pending ? "Working…" : "Subscribe"}
           </button>
@@ -329,10 +369,16 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
               <button className="ghost" type="button" disabled={pending || subscription.cancelled} onClick={() => void onCancel()}>
                 Cancel
               </button>
+              {subscription.cancelled ? (
+                <button className="ghost" type="button" disabled={pending} onClick={() => void onExplain()}>
+                  Show why a renewal stops
+                </button>
+              ) : null}
             </div>
             {!subscription.cancelled && !renewReady ? (
-              <p className="lede">Renew becomes available when the paid-until time has passed.</p>
+              <p className="note">Renew unlocks in {Math.max(secondsLeft, 0)}s. Leave this tab open.</p>
             ) : null}
+            {stopReason ? <p className="note">{stopReason}</p> : null}
           </>
         ) : (
           <p className="lede">The next billing date appears here after subscribe.</p>

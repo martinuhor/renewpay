@@ -25,7 +25,7 @@ Assumptions for SubscriptionManager, SessionKeyRegistry, and the checkout.
 - The CLI sends ordinary transactions. On Aevum those pay gas in tQDAY.
 - The checkout sends `subscribe`, `renewSubscription`, and `cancelSubscription` as EntryPoint v0.7 UserOperations through `https://bundler.qday.info`. The paymaster is `0x8DdF5E51c470257642e2c17E43977901b1173eFa`. Its `asset()` is tUSD8, and it pulls the network fee from the subscriber account in `postOp`. The UserOperation approves that paymaster for `100000` base units (0.1 tUSD8). That value is finite. The subscription allowance remains `cap × periods until expiry`, and it is also finite. `type(uint256).max` still reverts with `UnlimitedAllowance`.
 - Moving tUSD8 onto the Kernel subscriber account, and `createPlan`, are ordinary wallet transactions. Their network fee is tQDAY.
-- The checkout stores a webhook URL in the browser. Signed delivery is a separate service.
+- `npm run webhook` is a local inbox. It verifies `x-qday-signature` with HMAC-SHA256, stores the body in `web/.webhook/inbox.sqlite`, and keeps the secret in `web/.webhook/secret`. Both paths are gitignored. The process only reads public chain data and simulates renewals. It has no private key and it does not submit transactions. A failed renewal still has no durable log, because the EVM drops `RenewalFailed` on revert; the inbox records the simulated revert instead.
 
 ## Local mock
 

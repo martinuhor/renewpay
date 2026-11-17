@@ -17,6 +17,7 @@ import {
   SUBSCRIPTION_MANAGER,
   TUSD8,
 } from "./chain";
+import { logWindows, type LogWindow } from "./logs";
 
 const planCreated = parseAbiItem(
   "event PlanCreated(bytes32 indexed planId, address indexed merchant, uint256 amount, uint256 periodSeconds, uint256 trialSeconds, string metadataURI)",
@@ -27,6 +28,17 @@ const subscribed = parseAbiItem(
 const renewed = parseAbiItem(
   "event SubscriptionRenewed(bytes32 indexed subscriptionId, address indexed subscriber, address indexed merchant, uint256 amount, uint256 paidUntil)",
 );
+
+async function chunked<T>(read: (window: LogWindow) => Promise<readonly T[]>): Promise<T[]> {
+  const latest = await publicClient.getBlockNumber();
+  const windows = logWindows(DEPLOY_BLOCK, latest);
+  const logs: T[] = [];
+  for (let index = 0; index < windows.length; index += 4) {
+    const batch = await Promise.all(windows.slice(index, index + 4).map((window) => read(window)));
+    for (const part of batch) logs.push(...part);
+  }
+  return logs;
+}
 
 export type Plan = {
   merchant: Address;
@@ -221,14 +233,31 @@ export async function cancel(ethereum: EthereumProvider, subscriptionId: Hex): P
   return sendUserOperation(ethereum, cancelCalls(subscriptionId));
 }
 
+/** Read-only. Names the revert a renewal would hit, without sending a transaction. */
+export async function renewalRevert(subscriptionId: Hex): Promise<string> {
+  try {
+    await publicClient.simulateContract({
+      address: SUBSCRIPTION_MANAGER,
+      abi: managerAbi,
+      functionName: "renewSubscription",
+      args: [subscriptionId],
+    });
+    return "A renewal would succeed right now.";
+  } catch (cause) {
+    return formatChainError(cause);
+  }
+}
+
 export async function merchantPlans(merchant: Address): Promise<{ planId: Hex; plan: Plan; txHash: Hash }[]> {
-  const logs = await publicClient.getLogs({
-    address: SUBSCRIPTION_MANAGER,
-    event: planCreated,
-    args: { merchant },
-    fromBlock: DEPLOY_BLOCK,
-    toBlock: "latest",
-  });
+  const logs = await chunked((window) =>
+    publicClient.getLogs({
+      address: SUBSCRIPTION_MANAGER,
+      event: planCreated,
+      args: { merchant },
+      fromBlock: window.fromBlock,
+      toBlock: window.toBlock,
+    }),
+  );
   return logs.map((log) => ({
     planId: log.args.planId as Hex,
     txHash: log.transactionHash as Hash,
@@ -243,12 +272,14 @@ export async function merchantPlans(merchant: Address): Promise<{ planId: Hex; p
 }
 
 export async function merchantSubscriptions(merchant: Address): Promise<{ id: Hex; sub: Subscription }[]> {
-  const logs = await publicClient.getLogs({
-    address: SUBSCRIPTION_MANAGER,
-    event: subscribed,
-    fromBlock: DEPLOY_BLOCK,
-    toBlock: "latest",
-  });
+  const logs = await chunked((window) =>
+    publicClient.getLogs({
+      address: SUBSCRIPTION_MANAGER,
+      event: subscribed,
+      fromBlock: window.fromBlock,
+      toBlock: window.toBlock,
+    }),
+  );
   const ids = [...new Set(logs.map((log) => log.args.subscriptionId).filter((id): id is Hex => Boolean(id)))];
   const rows = await Promise.all(
     ids.map(async (id) => {
@@ -264,13 +295,15 @@ export async function merchantSubscriptions(merchant: Address): Promise<{ id: He
 }
 
 export async function merchantRenewals(merchant: Address): Promise<Renewal[]> {
-  const logs = await publicClient.getLogs({
-    address: SUBSCRIPTION_MANAGER,
-    event: renewed,
-    args: { merchant },
-    fromBlock: DEPLOY_BLOCK,
-    toBlock: "latest",
-  });
+  const logs = await chunked((window) =>
+    publicClient.getLogs({
+      address: SUBSCRIPTION_MANAGER,
+      event: renewed,
+      args: { merchant },
+      fromBlock: window.fromBlock,
+      toBlock: window.toBlock,
+    }),
+  );
   return logs.map((log) => ({
     subscriptionId: log.args.subscriptionId as Hex,
     subscriber: log.args.subscriber as Address,

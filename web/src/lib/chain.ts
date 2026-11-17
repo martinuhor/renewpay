@@ -45,6 +45,12 @@ export const PAYMASTER_POST_OP_GAS = 200_000n;
  */
 export const PAYMASTER_GAS_ALLOWANCE = 100_000n;
 
+/** The only faucet-funded account. It holds the demo's tUSD8 and the tQDAY for the two wallet transactions. */
+export const DEMO_MERCHANT = getAddress("0xCDB8793ec57DcdcC432CA083792dE9fb78d46750");
+
+/** Local signed-webhook inbox. The public https page cannot call this; the local checkout can. */
+export const WEBHOOK_INBOX = "http://127.0.0.1:8787";
+
 export const DEMO_AMOUNT = 1_000_000n;
 export const DEMO_CAP = 2_000_000n;
 export const DEMO_PERIOD_SECONDS = 2_592_000n;
