@@ -20,10 +20,17 @@ describe("chain errors", () => {
         cause: rpc,
       },
     };
-    assert.equal(formatChainError(reverted), "SubscriptionIsCancelled");
+    const text = formatChainError(reverted);
+    assert.match(text, /cancelled/i);
+    assert.equal(text.includes("0x"), false);
   });
 
-  it("keeps a wallet message when there is no custom error", () => {
-    assert.equal(formatChainError(new Error("User rejected the request.")), "User rejected the request.");
+  it("keeps a wallet rejection readable", () => {
+    assert.equal(formatChainError(new Error("User rejected the request.")), "The wallet request was rejected.");
+  });
+
+  it("hides a raw revert blob", () => {
+    const text = formatChainError(new Error("execution reverted: 0x1bc77ade1234abcd"));
+    assert.equal(text.includes("0x"), false);
   });
 });

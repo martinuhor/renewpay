@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAddress, isAddress, type Address } from "viem";
 import { DemoGuide } from "./DemoGuide";
+import { Keeper } from "./Keeper";
 import { MerchantPanel } from "./MerchantPanel";
 import { SubscriberPanel } from "./SubscriberPanel";
 import { ensureAevum } from "./lib/account";
@@ -80,6 +81,7 @@ export function App() {
       {notice ? <p className="error">{notice}</p> : null}
       {!ethereum ? <p className="warn">Open this page in a browser with a wallet extension and sign with that wallet.</p> : null}
       <DemoGuide address={address} />
+      <Keeper ethereum={ethereum} owner={address} />
 
       <div className="tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "merchant"} onClick={() => setTab("merchant")}>Merchant</button>

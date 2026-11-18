@@ -12,6 +12,7 @@ import {
 import { erc20Abi, managerAbi } from "./abi";
 import {
   PAYMASTER_GAS_ALLOWANCE,
+  SPONSOR_FEE,
   SUBSCRIPTION_MANAGER,
   TUSD8,
   TUSD8_DECIMALS,
@@ -126,8 +127,8 @@ export function randomSessionKey(): Address {
   return sessionKeyFromBytes(bytes);
 }
 
-function approve(spender: Address, amount: bigint): Call {
-  if (amount <= 0n || amount >= MAX_UINT256) throw new Error("Refusing an unlimited tUSD8 allowance.");
+function approveExact(spender: Address, amount: bigint): Call {
+  if (amount < 0n || amount >= MAX_UINT256) throw new Error("Refusing an unlimited tUSD8 allowance.");
   return {
     to: TUSD8,
     value: 0n,
@@ -137,6 +138,11 @@ function approve(spender: Address, amount: bigint): Call {
       args: [spender, amount],
     }),
   };
+}
+
+function approve(spender: Address, amount: bigint): Call {
+  if (amount <= 0n) throw new Error("Refusing an unlimited tUSD8 allowance.");
+  return approveExact(spender, amount);
 }
 
 function managerCall(functionName: "subscribe" | "renewSubscription" | "cancelSubscription", args: readonly unknown[]): Call {
@@ -190,8 +196,18 @@ export function renewCalls(subscriptionId: Hex, replaceManagerAllowance: bigint 
   return calls;
 }
 
-export function cancelCalls(subscriptionId: Hex): Call[] {
-  const calls = [managerCall("cancelSubscription", [subscriptionId])];
+/**
+ * Cancel on chain and zero the spending allowance in the same account operation.
+ * The live manager revokes the session key and does not touch ERC-20 allowance.
+ * The paymaster approval is set to exactly one network fee. Its post-operation
+ * pull spends that fee, so the remaining paymaster allowance is 0.
+ */
+export function cancelCalls(subscriptionId: Hex, paymaster: Address): Call[] {
+  const calls = [
+    approveExact(SUBSCRIPTION_MANAGER, 0n),
+    approveExact(paymaster, SPONSOR_FEE),
+    managerCall("cancelSubscription", [subscriptionId]),
+  ];
   assertFiniteApprovals(calls);
   return calls;
 }

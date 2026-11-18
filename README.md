@@ -1,6 +1,78 @@
 # RenewPay
 
-RenewPay is a subscription-billing engine for SaaS products, content creators, and API services on QDay Aevum.
+## Problem
+
+A merchant selling a seat, a membership, or API access needs the next tUSD8 charge to happen without a new unlimited approval every period. The subscriber needs a cap, an expiry, and a way to stop the next charge. They should see the exact amount, the period, the recipient, and the cap before the wallet signs.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  wallet[Merchant wallet]
+  kernel[Kernel subscriber account]
+  manager[SubscriptionManager]
+  registry[SessionKeyRegistry]
+  token[tUSD8]
+  key[Session key]
+  paymaster[SubscriptionPaymaster]
+  entry[EntryPoint v0.7]
+  wallet -->|createPlan| manager
+  kernel -->|subscribe, cancel| manager
+  key -->|renew| kernel
+  manager --> registry
+  manager -->|pull one period| token
+  token -->|to merchant| wallet
+  paymaster -->|sponsors the account operation| entry
+  kernel -->|0.01 tUSD8 fee| paymaster
+```
+
+QDay’s paymaster at `0x8DdF5E51c470257642e2c17E43977901b1173eFa` does not sponsor `SubscriptionManager`. The checkout deploys `SubscriptionPaymaster` and `RenewOnlyPolicy` when the funded wallet confirms those transactions. Until then, those two contracts are not on chain.
+
+## Safety model
+
+- The allowance is `cap × 2` for the manager, plus `0.1` tUSD8 for the paymaster fee. The checkout refuses `type(uint256).max`. The manager reverts `UnlimitedAllowance` if it sees one.
+- The plan price is copied onto the subscription. No function edits a live price.
+- A renewal pays only if the key is active, the period is due, the price is within the cap, and the balance and allowance cover it.
+- Pause and revoke calls `cancelSubscription`, which revokes the session key. The manager cannot set the ERC-20 allowance to 0, so the same click does that from the subscriber account. The paymaster allowance is set to the 0.01 tUSD8 fee and that fee spends it down to 0.
+- The session key can call renew, and a finite manager top-up in that same operation. It cannot transfer tUSD8 elsewhere. Subscribe and cancel stay on the owner wallet.
+- The first renewal asks the owner to approve that permission. Later renewals are signed by the key.
+
+## Live addresses
+
+| | |
+| --- | --- |
+| Chain | QDay Aevum testnet, id 44005 |
+| tUSD8 | `0x456569838f1d43009A91ebA4263147Afd7233483` |
+| SubscriptionManager | `0x51202A87aFdc07085e9586bc5E30a81a8cC4ff13` |
+| SessionKeyRegistry | `0x5fB5817ABb539C8628b45c0C0eC95797D2C85F26` |
+| EntryPoint v0.7 | `0x0000000071727De22E5E9d8BAf0edAc6f37da032` |
+| Explorer | https://explorer-test.qday.info |
+| Checkout | https://renewpay-checkout.apps.grok.bot |
+
+`SubscriptionPaymaster` and `RenewOnlyPolicy` have no fixed address until the wallet deploys them from Subscriber.
+
+## Environment
+
+Copy `.env.example` to `.env` for the CLI. Leave the private keys empty in git. The checkout does not read `.env`. It uses the live addresses above.
+
+```text
+RPC_URL=https://rpc-test.qday.info
+DEPLOYER_PRIVATE_KEY=
+SUBSCRIBER_PRIVATE_KEY=
+TUSD8_ADDRESS=0x456569838f1d43009A91ebA4263147Afd7233483
+SUBSCRIPTION_MANAGER_ADDRESS=
+SESSION_KEY_REGISTRY_ADDRESS=
+```
+
+## Three-minute demo
+
+Open https://renewpay-checkout.apps.grok.bot with wallet `0xCDB8793ec57DcdcC432CA083792dE9fb78d46750`. Deploy the renew policy, the paymaster, and the 0.05 tQDAY fund before you start if those buttons are still waiting.
+
+1. “This is a tUSD8 subscription. The price is fixed when the plan is created.” Create the plan.
+2. “Read the review: 1 tUSD8, every 2 minutes, paid to this merchant, cap 2 tUSD8.” Sign the subscription. Point at the receipt link.
+3. “The network fee on that call was 0.01 tUSD8. QDay’s paymaster does not sponsor this manager. This paymaster does, after you deploy it.”
+4. On Merchant, point at the next-due time and at the signed event from `/api/events`. The HMAC secret stays on the server. When the timer hits zero, leave the page open. The keeper renews. The session key signs it. The explorer link appears without a Renew click.
+5. “Pause and revoke stops the next charge and sets the allowance to 0. The manager cannot zero the allowance, so the subscriber account does it in this click.” Then show why a renewal stops.
 
 RenewPay is a subscription billing contract for QDay Aevum. A merchant publishes a tUSD8 plan. A subscriber authorizes a session key with a per-period spending cap and an expiry. The first period is collected on subscribe (unless the plan has a trial). Anyone can call `renewSubscription` once the next period is due. Only the subscriber can cancel, and cancellation revokes the session key.
 

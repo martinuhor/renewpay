@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatEther, isHex, type Address, type Hex } from "viem";
+import { formatEther, isHex, type Address, type Hash, type Hex } from "viem";
 import {
   cancel,
   formatChainError,
@@ -32,6 +32,8 @@ import {
   explorerAddress,
   explorerTx,
 } from "./lib/chain";
+import { ReceiptList, StepProgress, type Receipt } from "./Receipts";
+import { paymasterGasAllowance } from "./lib/billing";
 import { deployPaymaster, deployPolicy, fundPaymaster, rotateSessionSigner, savedPaymaster, savedPolicy, sessionSigner } from "./lib/sponsorship";
 import { DEMO_CANCELLED_KEY, DEMO_FUNDED_KEY, DEMO_PLAN_KEY, DEMO_RENEWED_KEY, DEMO_SUBSCRIPTION_KEY, markDemo } from "./lib/demo";
 
@@ -62,6 +64,13 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   const [pending, setPending] = useState(false);
   const [stopReason, setStopReason] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Math.floor(Date.now() / 1000));
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [subscribeStep, setSubscribeStep] = useState(0);
+
+  function remember(label: string, hash: Hash) {
+    setTx(hash);
+    setReceipts((current) => [{ label, hash }, ...current.filter((item) => item.hash !== hash)]);
+  }
 
   useEffect(() => {
     setSessionKey(sessionSigner().address);
@@ -125,7 +134,9 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   }, [expiryDays, now]);
 
   let allowancePreview: string | null = null;
+  let capPreview = "—";
   try {
+    capPreview = formatTusd(parseTusdInput(cap));
     if (plan) allowancePreview = formatTusd(subscriptionAllowance(parseTusdInput(cap), now, expiry, plan.periodSeconds));
   } catch (cause) {
     allowancePreview = cause instanceof Error ? cause.message : null;
@@ -219,7 +230,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     setError(null);
     try {
       const hash = await fundSubscriber({ ethereum, from: owner, to: subscriber, amount: parseTusdInput(fund) });
-      setTx(hash);
+      remember("Moved tUSD8 onto the subscriber account", hash);
       markDemo(DEMO_FUNDED_KEY, hash);
       setStatus("3 tUSD8 is on the subscriber account. That transfer’s fee was tQDAY. Subscribe next.");
       const [walletBalances, accountBalances] = await Promise.all([readBalances(owner), readBalances(subscriber)]);
@@ -236,6 +247,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     if (!ethereum || !plan || !sessionKey || !isHex(planId)) return;
     setPending(true);
     setError(null);
+    setSubscribeStep(1);
     try {
       const hash = await subscribe({
         ethereum,
@@ -245,13 +257,15 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         expiry,
         periodSeconds: plan.periodSeconds,
       });
-      setTx(hash);
-      setStatus("Subscribed. The first 1 tUSD8 moved to the merchant, and 0.01 tUSD8 paid the network fee. Wait for the timer, then renew.");
+      remember("Subscribed", hash);
+      setSubscribeStep(3);
+      setStatus("Subscribed. The first period moved to the merchant, and 0.01 tUSD8 paid the network fee. Wait for the timer, then renew.");
       if (predictedId) {
         markDemo(DEMO_SUBSCRIPTION_KEY, predictedId);
         await refreshSubscription(predictedId);
       }
     } catch (cause) {
+      setSubscribeStep(0);
       setError(formatChainError(cause));
     } finally {
       setPending(false);
@@ -273,7 +287,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         expiry: subscription.expiry,
         periodSeconds: subscription.periodSeconds,
       });
-      setTx(result.hash);
+      remember("Renewed", result.hash);
       markDemo(DEMO_RENEWED_KEY, "1");
       setStatus(
         result.firstEnable
@@ -294,9 +308,9 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     setError(null);
     try {
       const hash = await cancel(ethereum, subscriptionId);
-      setTx(hash);
+      remember("Paused and revoked", hash);
       markDemo(DEMO_CANCELLED_KEY, "1");
-      setStatus("Cancelled. The network fee was 0.01 tUSD8. The session key is revoked. Click Show why a renewal stops.");
+      setStatus("Paused. The subscription is cancelled and the session key is revoked. The manager allowance is 0. The paymaster allowance was set to the 0.01 tUSD8 fee, which this operation spends, so that allowance ends at 0. The live manager cannot change the token allowance itself. This click did it from the subscriber account.");
       await refreshSubscription(subscriptionId);
     } catch (cause) {
       setError(formatChainError(cause));
@@ -325,7 +339,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     <div className="grid">
       <section className="card">
         <h2>Authorize and pay</h2>
-        <p className="lede">The same wallet owns the subscriber account. Deploy the renew policy and the paymaster once, fund the paymaster with 0.05 tQDAY, then subscribe. The charge is 1 tUSD8. The network fee is 0.01 tUSD8.</p>
+        <p className="lede">The paymaster’s EntryPoint float is tQDAY. Fund it once with 0.05 tQDAY. The subscriber fee on subscribe, renew, and cancel is 0.01 tUSD8. QDay’s paymaster does not sponsor SubscriptionManager.</p>
         <div className="actions">
           <button className="ghost" type="button" disabled={pending || !owner || Boolean(policy)} onClick={() => void onDeployPolicy()}>
             {policy ? "Policy deployed" : "Deploy renew policy"}
@@ -359,7 +373,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
           </dl>
         ) : null}
         <label>
-          Session key. This browser holds the private key. The chain records the address, the cap, and the expiry. Cancel revokes it.
+          Session key. This browser holds the private key. The chain records the address, the cap, and the expiry. Pause revokes it.
           <input readOnly value={sessionKey ?? ""} />
         </label>
         <p className="note">The first renewal asks the wallet to approve this key. After that, the key signs renewals itself, and it can only call renew. The price still has to fit the cap, the period has to be due, and the allowance stays finite.</p>
@@ -405,16 +419,32 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
           <input value={fund} onChange={(event) => setFund(event.target.value)} inputMode="numeric" />
         </label>
         <p className="warn">That transfer is a wallet transaction, so its network fee is tQDAY. Default is 3 tUSD8: the first period and one renewal. Do not move it again if the account already holds 3 tUSD8.</p>
+        {plan && sessionKey ? (
+          <div className="review">
+            <strong>Review before you sign</strong>
+            <div>Amount {formatTusd(plan.amount)} tUSD8</div>
+            <div>Period {formatPeriod(plan.periodSeconds)}</div>
+            <div>Recipient {plan.merchant}</div>
+            <div>Spending cap {capPreview} tUSD8 per period</div>
+            <div>Allowance {allowancePreview ?? "—"} tUSD8, which is the cap times two. Paymaster approval {formatTusd(paymasterGasAllowance())} tUSD8. Neither is unlimited.</div>
+            <div>Network fee {formatTusd(SPONSOR_FEE)} tUSD8. The paymaster’s EntryPoint float is tQDAY. QDay’s paymaster does not sponsor SubscriptionManager.</div>
+          </div>
+        ) : null}
+        <StepProgress
+          labels={["Approve the capped tUSD8 allowance", "Activate the subscription", "Receipt"]}
+          active={subscribeStep}
+        />
         <div className="actions">
           <button className="ghost" type="button" disabled={pending || !subscriber} onClick={() => void onFund()}>Move 3 tUSD8</button>
           <button className="primary" type="button" disabled={pending || !plan || !subscriber || !paymaster || deposit === 0n} onClick={() => void onSubscribe()}>
-            {pending ? "Working…" : "Subscribe"}
+            {pending ? "Working…" : "Sign subscription"}
           </button>
         </div>
         {predictedId ? <p className="mono">Subscription id {predictedId}</p> : null}
         {status ? <p className="note">{status}</p> : null}
-        {tx ? <p><a href={explorerTx(tx)}>Transaction</a></p> : null}
+        {tx ? <p><a href={explorerTx(tx)}>{explorerTx(tx)}</a></p> : null}
         {error ? <p className="error">{error}</p> : null}
+        <ReceiptList receipts={receipts} />
       </section>
       <section className="card">
         <h2>Billing</h2>
@@ -432,12 +462,20 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
               <dt>Session key</dt>
               <dd className="mono">{subscription.sessionKey}</dd>
             </dl>
+            <div className="review">
+              <strong>Review the next charge before you sign</strong>
+              <div>Amount {formatTusd(subscription.amount)} tUSD8</div>
+              <div>Period {formatPeriod(subscription.periodSeconds)}</div>
+              <div>Recipient {subscription.merchant}</div>
+              <div>Spending cap {formatTusd(subscription.spendingCapPerPeriod)} tUSD8 per period</div>
+            </div>
+            <p className="note">Pause and revoke cancels on chain. The live manager revokes the session key and cannot set the tUSD8 allowance to 0, so this same click does that from the subscriber account.</p>
             <div className="actions">
               <button className="primary" type="button" disabled={pending || !renewReady} onClick={() => void onRenew()}>
                 Renew
               </button>
               <button className="ghost" type="button" disabled={pending || subscription.cancelled} onClick={() => void onCancel()}>
-                Cancel
+                Pause and revoke
               </button>
               {subscription.cancelled ? (
                 <button className="ghost" type="button" disabled={pending} onClick={() => void onExplain()}>

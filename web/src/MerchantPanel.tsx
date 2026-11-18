@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import type { Address, Hash, Hex } from "viem";
 import { Inbox } from "./Inbox";
 import { Notices } from "./Notices";
-import { createPlan, formatChainError, merchantPlans, merchantRenewals, merchantSubscriptions, type Plan, type Renewal, type Subscription } from "./lib/actions";
+import { SignedFeed } from "./SignedFeed";
+import { ReceiptList, type Receipt } from "./Receipts";
+import { createPlan, formatChainError, merchantPlans, merchantRenewals, merchantSubscriptions, triggerRenewal, type Plan, type Renewal, type Subscription } from "./lib/actions";
 import { formatPeriod, formatTusd, parseTusdInput, planIdFor } from "./lib/billing";
 import {
   DEMO_AMOUNT,
@@ -29,6 +31,13 @@ export function MerchantPanel({ ethereum, merchant }: { ethereum?: EthereumProvi
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [clock, setClock] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Math.floor(Date.now() / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function refresh(address: Address) {
     const [nextPlans, nextSubscriptions, nextRenewals] = await Promise.all([
@@ -64,6 +73,7 @@ export function MerchantPanel({ ethereum, merchant }: { ethereum?: EthereumProvi
         metadataURI: metadata,
       });
       markDemo(DEMO_PLAN_KEY, created.planId);
+      setReceipts((current) => [{ label: "Created plan", hash: created.hash }, ...current.filter((item) => item.hash !== created.hash)]);
       setStatus("Plan is on-chain. Open Subscriber and continue with this same wallet.");
       await refresh(merchant);
     } catch (cause) {
@@ -76,6 +86,26 @@ export function MerchantPanel({ ethereum, merchant }: { ethereum?: EthereumProvi
         return;
       }
       setError(message);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function onTrigger(subscriptionId: Hex) {
+    if (!ethereum || !merchant) {
+      setError("Connect the merchant wallet first.");
+      return;
+    }
+    setPending(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const hash = await triggerRenewal({ ethereum, from: merchant, subscriptionId });
+      setReceipts((current) => [{ label: "Triggered renewal", hash }, ...current.filter((item) => item.hash !== hash)]);
+      setStatus("Renewal collected. The hash is in the receipt list.");
+      await refresh(merchant);
+    } catch (cause) {
+      setError(formatChainError(cause));
     } finally {
       setPending(false);
     }
@@ -131,6 +161,7 @@ export function MerchantPanel({ ethereum, merchant }: { ethereum?: EthereumProvi
       </section>
       <section className="card">
         <h2>Plans and renewals</h2>
+        <SignedFeed merchant={merchant} />
         <Notices merchant={merchant} subscriptions={subscriptions} renewals={renewals} />
         <div className="list">
           {plans.length === 0 ? <p className="lede">No plans from this merchant yet.</p> : null}
@@ -146,13 +177,35 @@ export function MerchantPanel({ ethereum, merchant }: { ethereum?: EthereumProvi
         <h3>Subscriptions</h3>
         <div className="list">
           {subscriptions.length === 0 ? <p className="lede">No subscriptions for this merchant yet.</p> : null}
-          {subscriptions.map((item) => (
-            <article className="item" key={item.id}>
-              <div className="mono">{short(item.id)}</div>
-              <div>Subscriber {short(item.sub.subscriber)}</div>
-              <div>{item.sub.cancelled ? "Cancelled" : `Paid until ${new Date(Number(item.sub.paidUntil) * 1000).toLocaleString()}`}</div>
-            </article>
-          ))}
+          {subscriptions.map((item) => {
+            const due = Number(item.sub.paidUntil);
+            const remaining = due - clock;
+            const dueLabel = new Date(due * 1000).toLocaleString();
+            return (
+              <article className="item" key={item.id}>
+                <div className="mono">{short(item.id)}</div>
+                <div>Subscriber {short(item.sub.subscriber)}</div>
+                <div>Amount {formatTusd(item.sub.amount)} tUSD8 · every {formatPeriod(item.sub.periodSeconds)}</div>
+                <div>Cap {formatTusd(item.sub.spendingCapPerPeriod)} tUSD8 · recipient {short(item.sub.merchant)}</div>
+                {item.sub.cancelled ? (
+                  <div>Cancelled. The next charge will not run.</div>
+                ) : (
+                  <div>
+                    <strong>Next due {dueLabel}.</strong> {remaining <= 0 ? "Due now." : `Due in ${remaining}s.`}
+                  </div>
+                )}
+                <button
+                  className="primary"
+                  type="button"
+                  disabled={pending || item.sub.cancelled || remaining > 0}
+                  onClick={() => void onTrigger(item.id)}
+                >
+                  Trigger renewal
+                </button>
+              </article>
+            );
+          })}
+          <ReceiptList receipts={receipts} />
         </div>
         <h3>Renewal history</h3>
         <div className="list">

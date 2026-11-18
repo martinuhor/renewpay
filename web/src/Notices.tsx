@@ -101,8 +101,7 @@ export function Notices({
     <div className="inbox">
       <h3>What the merchant is told</h3>
       <p className="lede">
-        Each card is the webhook body for one chain event. A merchant server accepts it only after the HMAC matches.
-        This list is read from Aevum. The page does not send the wallet to a local server to build it.
+        The signed feed above is the one a merchant can verify. These cards are the same events, read straight from Aevum in the browser.
       </p>
       {events.length === 0 ? (
         <p className="lede">Nothing to deliver until a plan has a subscriber.</p>

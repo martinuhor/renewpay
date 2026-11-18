@@ -243,6 +243,20 @@ dd { margin: 0; overflow-wrap: anywhere; }
   border-color: var(--green);
 }
 
+.mark-step.now {
+  border-color: var(--clay);
+  color: var(--clay);
+}
+
+.review {
+  border: 1px solid var(--line);
+  background: var(--green-soft);
+  padding: 12px 14px;
+  margin: 12px 0;
+}
+
+.review strong { display: block; margin-bottom: 6px; }
+
 .inbox { margin-top: 18px; }
 .inbox code {
   font-family: "IBM Plex Mono", ui-monospace, monospace;

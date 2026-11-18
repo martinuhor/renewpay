@@ -15,6 +15,7 @@ import {
   ENTRY_POINT,
   SUBSCRIPTION_MANAGER,
   TUSD8,
+  aevum,
 } from "./chain";
 import { logWindows, type LogWindow } from "./logs";
 import { requirePaymaster, sendOwnerOperation, sendSessionRenewal, sessionSigner } from "./sponsorship";
@@ -265,7 +266,24 @@ export async function renew(input: {
 }
 
 export async function cancel(ethereum: EthereumProvider, subscriptionId: Hex): Promise<Hash> {
-  return sendUserOperation(ethereum, cancelCalls(subscriptionId));
+  return sendUserOperation(ethereum, cancelCalls(subscriptionId, requirePaymaster()));
+}
+
+/** Permissionless keeper call from the merchant wallet. The charge is still tUSD8. The network fee on this call is tQDAY. */
+export async function triggerRenewal(input: { ethereum: EthereumProvider; from: Address; subscriptionId: Hex }): Promise<Hash> {
+  await ensureAevum(input.ethereum);
+  const wallet = walletClientFor(input.ethereum, input.from);
+  const hash = await wallet.writeContract({
+    account: input.from,
+    chain: aevum,
+    address: SUBSCRIPTION_MANAGER,
+    abi: managerAbi,
+    functionName: "renewSubscription",
+    args: [input.subscriptionId],
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("The renewal was not collected.");
+  return hash;
 }
 
 /** Read-only. Names the revert a renewal would hit, without sending a transaction. */

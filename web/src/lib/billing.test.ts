@@ -15,7 +15,7 @@ import {
   subscriptionAllowance,
   subscriptionIdFor,
 } from "./billing";
-import { PAYMASTER_GAS_ALLOWANCE, SUBSCRIPTION_MANAGER, TUSD8 } from "./chain";
+import { PAYMASTER_GAS_ALLOWANCE, SPONSOR_FEE, SUBSCRIPTION_MANAGER, TUSD8 } from "./chain";
 
 const merchant = getAddress("0xCDB8793ec57DcdcC432CA083792dE9fb78d46750");
 const sessionKey = getAddress("0x00000000000000000000000000000000000000a1");
@@ -118,7 +118,11 @@ describe("user operation calls", () => {
     assert.equal(replaced.length, 2);
     assert.equal(BigInt(`0x${replaced[0]?.data.slice(10 + 64)}`), 4_000_000n);
     assert.throws(() => renewCalls(id, MAX_UINT256), /unlimited/i);
-    const cancel = cancelCalls(id);
+    const paymaster = getAddress("0x000000000000000000000000000000000000dEa2");
+    const cancel = cancelCalls(id, paymaster);
+    assert.equal(cancel.length, 3);
+    assert.equal(BigInt(`0x${cancel[0]?.data.slice(10 + 64)}`), 0n);
+    assert.equal(BigInt(`0x${cancel[1]?.data.slice(10 + 64)}`), SPONSOR_FEE);
     assert.ok(cancel.at(-1)?.data.startsWith("0xd21f1ffc"));
     assertFiniteApprovals(renew);
     assertFiniteApprovals(cancel);

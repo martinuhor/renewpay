@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { signWebhookBody } from "./signedEvents";
 import { canonicalWebhookBody, hmacSha256Hex, inboxTokenMatches, webhookSignaturesMatch, type WebhookBody } from "./webhook";
 
 const sample: WebhookBody = {
@@ -26,6 +27,9 @@ describe("webhook signatures", () => {
     const tampered = canonicalWebhookBody({ ...sample, amount: "2000000" });
     assert.equal(await webhookSignaturesMatch(secret, tampered, signature), false);
     assert.equal(await webhookSignaturesMatch("other-secret", body, signature), false);
+    const signed = await signWebhookBody(secret, sample);
+    assert.equal(signed.valid, true);
+    assert.equal(signed.signature, signature);
   });
 
   it("rejects a missing or wrong inbox token", () => {

@@ -108,7 +108,42 @@ function revertDataName(data: unknown): string | null {
   }
 }
 
-/** Prefer the Solidity custom error. Aevum's RPC text hides it behind "unknown reason". */
+const ERROR_COPY: Record<string, string> = {
+  SubscriptionIsCancelled: "This subscription is cancelled, so the next charge cannot be collected.",
+  AlreadyCancelled: "This subscription is already cancelled.",
+  PeriodNotDue: "The next period is not due yet.",
+  CapExceeded: "The price is above the spending cap, so the charge was refused.",
+  InsufficientBalance: "The subscriber account does not hold enough tUSD8 for this charge.",
+  InsufficientAllowance: "The tUSD8 allowance does not cover this charge.",
+  UnlimitedAllowance: "An unlimited tUSD8 allowance is refused.",
+  SessionKeyInactive: "The session key is revoked, so the renewal stopped.",
+  SessionKeyExpired: "The session key has expired, so the renewal stopped.",
+  NotSubscriber: "Only the subscriber can cancel this subscription.",
+  PlanExists: "This exact plan is already on chain.",
+  SubscriptionExists: "This account is already subscribed to this plan with this session key.",
+  FeeTransferFailed: "The 0.01 tUSD8 network fee could not be collected.",
+  CallNotSponsored: "The paymaster only sponsors subscribe, renew, cancel, and a finite tUSD8 approval.",
+  ZeroAmount: "The price has to be greater than zero.",
+  ZeroCap: "The spending cap has to be greater than zero.",
+  PlanNotFound: "That plan is not on chain.",
+  SubscriptionNotFound: "That subscription is not on chain.",
+};
+
+function humanError(name: string): string {
+  const base = name.split("(")[0] ?? name;
+  const sentence = ERROR_COPY[base];
+  return sentence ? `${sentence} (${base})` : base;
+}
+
+function withoutRawHex(message: string): string {
+  if (/user rejected/i.test(message)) return "The wallet request was rejected.";
+  if (/0x[0-9a-fA-F]{8,}/.test(message)) {
+    return "The chain rejected this step. Check the amount, the allowance, and the paymaster float, then try again.";
+  }
+  return message;
+}
+
+/** Prefer a sentence for the Solidity error. Never surface a raw revert blob. */
 export function formatChainError(error: unknown): string {
   const parts: string[] = [];
   const seen = new Set<unknown>();
@@ -117,13 +152,14 @@ export function formatChainError(error: unknown): string {
     seen.add(current);
     const record = current as { data?: unknown; shortMessage?: unknown; details?: unknown; message?: unknown; cause?: unknown };
     const name = revertDataName(record.data);
-    if (name) return name;
+    if (name) return humanError(name);
     if (typeof record.shortMessage === "string") parts.push(record.shortMessage);
     if (typeof record.details === "string" && record.details.trim()) parts.push(record.details.trim());
+    if (typeof record.message === "string") parts.push(record.message);
     current = record.cause;
   }
   if (parts.length === 0) {
     parts.push(error instanceof Error ? error.message : String(error));
   }
-  return [...new Set(parts)].join("\n");
+  return withoutRawHex([...new Set(parts)].join(" "));
 }

@@ -22,7 +22,8 @@ library CallGuard {
         ApprovePaymaster,
         Subscribe,
         Renew,
-        Cancel
+        Cancel,
+        ClearAllowance
     }
 
     struct Call {
@@ -43,6 +44,9 @@ library CallGuard {
             assembly {
                 spender := mload(add(data, 36))
                 amount := mload(add(data, 68))
+            }
+            if (amount == 0 && (spender == MANAGER || (spender == paymaster && paymaster != address(0)))) {
+                return Kind.ClearAllowance;
             }
             if (spender == MANAGER && amount > 0 && amount <= MAX_MANAGER_APPROVAL) return Kind.ApproveManager;
             if (spender == paymaster && paymaster != address(0) && amount > 0 && amount <= MAX_PAYMASTER_APPROVAL) {
