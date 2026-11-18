@@ -8,6 +8,9 @@ import { readSubscription, type Renewal, type Subscription } from "./actions";
 export const FEED_LOOKBACK = 12_000n;
 const MAX_SUBSCRIPTIONS = 12;
 
+const planCreated = parseAbiItem(
+  "event PlanCreated(bytes32 indexed planId, address indexed merchant, uint256 amount, uint256 periodSeconds, uint256 trialSeconds, string metadataURI)",
+);
 const subscribed = parseAbiItem(
   "event Subscribed(bytes32 indexed subscriptionId, bytes32 indexed planId, address indexed subscriber, address sessionKey, uint256 spendingCapPerPeriod, uint256 expiry, uint256 charged, uint256 paidUntil)",
 );
@@ -28,6 +31,21 @@ export async function recentMerchantActivity(merchant: Address): Promise<{
   const who = getAddress(merchant);
   const latest = await publicClient.getBlockNumber();
   const windows = logWindows(feedStartBlock(latest), latest);
+  let hasPlan = false;
+  for (const window of windows) {
+    const plans = await publicClient.getLogs({
+      address: SUBSCRIPTION_MANAGER,
+      event: planCreated,
+      args: { merchant: who },
+      fromBlock: window.fromBlock,
+      toBlock: window.toBlock,
+    });
+    if (plans.length > 0) {
+      hasPlan = true;
+      break;
+    }
+  }
+  if (!hasPlan) return { subscriptions: [], renewals: [] };
   const subscriptionIds: Hex[] = [];
   const renewals: Renewal[] = [];
   for (const window of windows) {

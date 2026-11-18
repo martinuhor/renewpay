@@ -47,7 +47,7 @@ export function SignedFeed({ ethereum, merchant }: { ethereum?: EthereumProvider
       setError(null);
       const confirmed: Record<string, boolean> = {};
       for (const event of next.slice(0, 4)) {
-        const check = await fetch("/api/events", {
+        const check = await fetch(`/api/events?merchant=${merchant}`, {
           method: "POST",
           headers: { "content-type": "application/json", "x-renewpay-feed": header },
           body: JSON.stringify({ merchant, body: event.body, signature: event.signature }),

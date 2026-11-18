@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { feedHeader, feedMessage, merchantSignedFeed } from "./feedAuth";
+import { takeScanSlot } from "./feedLimit";
 import { feedStartBlock, FEED_LOOKBACK } from "./recentFeed";
 
 describe("merchant feed auth", () => {
@@ -22,5 +23,16 @@ describe("merchant feed auth", () => {
     assert.equal(start, latest - FEED_LOOKBACK);
     assert.ok(latest - start <= FEED_LOOKBACK);
     assert.equal(feedStartBlock(deploy + 100n, deploy), deploy);
+  });
+
+  it("stops a burst of new feed scans", () => {
+    let stamps: number[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const next = takeScanSlot(stamps, 1_000);
+      assert.equal(next.ok, true);
+      stamps = next.stamps;
+    }
+    assert.equal(takeScanSlot(stamps, 1_000).ok, false);
+    assert.equal(takeScanSlot(stamps, 61_000).ok, true);
   });
 });

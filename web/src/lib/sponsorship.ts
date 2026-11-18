@@ -74,16 +74,38 @@ const kernelAbi = [
 
 export type PreparedCall = { to: Address; data: Hex; value: bigint };
 
+let sessionMemory: Hex | "" = "";
+
+function browserStore(kind: "session" | "local"): Storage | null {
+  try {
+    return kind === "session" ? sessionStorage : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function readHex(store: Storage | null): Hex | "" {
+  const value = store?.getItem(SESSION_SECRET) ?? "";
+  return isHex(value) && value.length === 66 ? value : "";
+}
+
+/** This browser session only. A leftover localStorage copy is deleted. */
 export function sessionSigner(): { privateKey: Hex; address: Address } {
-  const saved = localStorage.getItem(SESSION_SECRET);
-  const privateKey = saved && isHex(saved) && saved.length === 66 ? saved : generatePrivateKey();
-  if (privateKey !== saved) localStorage.setItem(SESSION_SECRET, privateKey);
+  const lingering = browserStore("local");
+  const fromLocal = readHex(lingering);
+  lingering?.removeItem(SESSION_SECRET);
+  const tab = browserStore("session");
+  const privateKey = readHex(tab) || fromLocal || sessionMemory || generatePrivateKey();
+  sessionMemory = privateKey;
+  tab?.setItem(SESSION_SECRET, privateKey);
   return { privateKey, address: privateKeyToAccount(privateKey).address };
 }
 
 export function rotateSessionSigner(): Address {
   const privateKey = generatePrivateKey();
-  localStorage.setItem(SESSION_SECRET, privateKey);
+  sessionMemory = privateKey;
+  browserStore("local")?.removeItem(SESSION_SECRET);
+  browserStore("session")?.setItem(SESSION_SECRET, privateKey);
   return privateKeyToAccount(privateKey).address;
 }
 

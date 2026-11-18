@@ -80,7 +80,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   const [planId, setPlanId] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [cap, setCap] = useState(DEMO_CAP.toString());
-  const [expiryDays, setExpiryDays] = useState("365");
+  const [expiryDays, setExpiryDays] = useState("1");
   const fund = DEMO_FUND.toString();
   const [sessionKey, setSessionKey] = useState<Address | null>(null);
   const [policy, setPolicy] = useState<Address | null>(null);
@@ -428,7 +428,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
             <input value={cap} onChange={(event) => setCap(event.target.value)} inputMode="numeric" />
           </label>
           <label>
-            Expiry, days from now
+            Expiry, days from now. The default is 1. The key stays in this browser tab, not in saved site data.
             <input value={expiryDays} onChange={(event) => setExpiryDays(event.target.value)} inputMode="numeric" />
           </label>
           <div className="note">Allowance {allowancePreview ?? "—"} tUSD8. Cap times two. It stays finite.</div>
