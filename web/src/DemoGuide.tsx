@@ -3,7 +3,7 @@ import { formatEther, getAddress, type Address } from "viem";
 import { merchantPlans, readBalances } from "./lib/actions";
 import { formatTusd } from "./lib/billing";
 import { DEMO_MERCHANT } from "./lib/chain";
-import { DEMO_CANCELLED_KEY, DEMO_FUNDED_KEY, DEMO_PLAN_KEY, DEMO_RENEWED_KEY, DEMO_SUBSCRIPTION_KEY, readDemo } from "./lib/demo";
+import { DEMO_CANCELLED_KEY, DEMO_FUNDED_KEY, DEMO_PAYMASTER_FUNDED_KEY, DEMO_PAYMASTER_KEY, DEMO_PLAN_KEY, DEMO_POLICY_KEY, DEMO_RENEWED_KEY, DEMO_SUBSCRIPTION_KEY, readDemo } from "./lib/demo";
 
 function short(value: string): string {
   return `${value.slice(0, 6)}…${value.slice(-4)}`;
@@ -13,7 +13,7 @@ export function DemoGuide({ address }: { address: Address | null }) {
   const [native, setNative] = useState<bigint | null>(null);
   const [token, setToken] = useState<bigint | null>(null);
   const [plans, setPlans] = useState(0);
-  const [marks, setMarks] = useState({ funded: "", subscribed: "", renewed: "", cancelled: "", planId: "" });
+  const [marks, setMarks] = useState({ funded: "", subscribed: "", renewed: "", cancelled: "", planId: "", policy: "", paymaster: "", fundedPaymaster: "" });
 
   useEffect(() => {
     const readMarks = () => {
@@ -23,6 +23,9 @@ export function DemoGuide({ address }: { address: Address | null }) {
         renewed: readDemo(DEMO_RENEWED_KEY),
         cancelled: readDemo(DEMO_CANCELLED_KEY),
         planId: readDemo(DEMO_PLAN_KEY),
+        policy: readDemo(DEMO_POLICY_KEY),
+        paymaster: readDemo(DEMO_PAYMASTER_KEY),
+        fundedPaymaster: readDemo(DEMO_PAYMASTER_FUNDED_KEY),
       });
     };
     readMarks();
@@ -54,18 +57,20 @@ export function DemoGuide({ address }: { address: Address | null }) {
   const rightWallet = address ? getAddress(address) === DEMO_MERCHANT : false;
   const hasGas = native !== null && native > 0n;
   const planReady = plans > 0 || marks.planId.length === 66;
+  const setupReady = marks.policy.length === 42 && marks.paymaster.length === 42 && marks.fundedPaymaster === "1";
   const steps = [
-    { done: rightWallet && hasGas, text: `Connect ${short(DEMO_MERCHANT)}. This wallet holds the tUSD8 for the charges and the tQDAY for the account’s network fees.` },
+    { done: rightWallet && hasGas, text: `Connect ${short(DEMO_MERCHANT)}. This wallet holds the tUSD8 and the tQDAY for the two deploys.` },
+    { done: setupReady, text: "Subscriber: deploy the renew policy, deploy the paymaster, then fund the paymaster with 0.05 tQDAY." },
     { done: planReady, text: "Merchant: leave the plan at 1 tUSD8 every 2 minutes and create it. The price is fixed once it is on chain." },
-    { done: marks.funded.length > 0 && marks.subscribed.length > 0, text: "Subscriber: deposit 0.05 tQDAY, then subscribe. The first 1 tUSD8 moves to the merchant. The session key’s cap is 2 tUSD8 per period." },
-    { done: marks.renewed === "1", text: "When the timer reaches zero, renew. Another 1 tUSD8 moves, still inside the cap." },
+    { done: marks.funded.length > 0 && marks.subscribed.length > 0, text: "Subscriber: move 3 tUSD8, then subscribe. The first 1 tUSD8 moves. The network fee is 0.01 tUSD8." },
+    { done: marks.renewed === "1", text: "When the timer reaches zero, renew. The wallet approves the session key once. The key signs the renewal." },
     { done: marks.cancelled === "1", text: "Cancel, then show why a renewal stops. The chain answers SubscriptionIsCancelled." },
   ];
 
   return (
     <section className="card guide">
       <h2>One subscription, start to finish</h2>
-      <p className="lede">One wallet is the merchant and the owner of the subscriber account. Leave the numbers alone. The payment is tUSD8. The smart account’s network fee is a 0.05 tQDAY deposit, because QDay’s paymaster only sponsors a plain tUSD8 transfer.</p>
+      <p className="lede">One wallet is the merchant and the owner of the subscriber account. Leave the numbers alone. The payment is tUSD8. Subscribe, renew, and cancel pay their network fee in tUSD8 through the paymaster you deploy here. The session key signs the renewal.</p>
       <ol className="steps">
         {steps.map((step, index) => (
           <li key={step.text}>

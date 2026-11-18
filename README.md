@@ -4,7 +4,7 @@ RenewPay is a subscription-billing engine for SaaS products, content creators, a
 
 RenewPay is a subscription billing contract for QDay Aevum. A merchant publishes a tUSD8 plan. A subscriber authorizes a session key with a per-period spending cap and an expiry. The first period is collected on subscribe (unless the plan has a trial). Anyone can call `renewSubscription` once the next period is due. Only the subscriber can cancel, and cancellation revokes the session key.
 
-The contracts and the Node CLI are the week-1 core. The `web` checkout is the merchant and subscriber UI. Subscribe, renew, and cancel are ERC-4337 UserOperations. Their network fee is a small tQDAY deposit, because QDay’s stablecoin paymaster does not sponsor this contract. The subscription payment is tUSD8. Webhook delivery is not part of this checkout.
+The contracts and the Node CLI are the week-1 core. The `web` checkout is the merchant and subscriber UI. Subscribe, renew, and cancel are ERC-4337 UserOperations. Their network fee is 0.01 tUSD8, paid to a paymaster the checkout deploys. The subscription payment is tUSD8. The session key signs renewals. Webhook delivery is not part of this checkout.
 
 ## Chain
 
@@ -82,17 +82,18 @@ npm run dev
 
 Open the printed local URL and connect a wallet on chain id 44005. The page can add the network. It never asks for a private key.
 
-The live checkout is https://renewpay-checkout.apps.grok.bot. Use that for the five clicks below. The signed webhook inbox stays on your machine. The public page does not call it.
+The live checkout is https://renewpay-checkout.apps.grok.bot. Use that for the steps below. The signed webhook inbox stays on your machine. The public page does not call it.
 
-### Five clicks
+### Demo steps
 
-Use wallet `0xCDB8793ec57DcdcC432CA083792dE9fb78d46750`. It holds the demo tUSD8 and enough tQDAY for the two ordinary transactions. One wallet is both merchant and subscriber: the subscriber is the Kernel account derived from it.
+Use wallet `0xCDB8793ec57DcdcC432CA083792dE9fb78d46750`. It holds the demo tUSD8 and the tQDAY for the deploys. One wallet is both merchant and subscriber: the subscriber is the Kernel account derived from it.
 
 1. Connect that wallet.
-2. On Merchant, leave the form at 1 tUSD8 and 120 seconds. Click **Create plan** and confirm. The fee is tQDAY.
-3. Open Subscriber. The 3 tUSD8 is already on the account. Click **Deposit 0.05 tQDAY**, then **Subscribe**. Confirm both. The network fee is that deposit. The 1 tUSD8 still moves to the merchant.
-4. When the timer hits zero, click **Renew**.
-5. Click **Cancel**, then **Show why a renewal stops**. The revert is `SubscriptionIsCancelled`.
+2. On Subscriber, click **Deploy renew policy**, then **Deploy paymaster**, then **Fund paymaster**. Confirm each. The fund is 0.05 tQDAY. A quarter of it is staked with the EntryPoint. The rest is the paymaster's float.
+3. On Merchant, leave the form at 1 tUSD8 and 120 seconds. Click **Create plan** and confirm. The fee is tQDAY.
+4. Open Subscriber. The 3 tUSD8 is already on the account. Click **Subscribe** and confirm. The 1 tUSD8 moves to the merchant. The network fee is 0.01 tUSD8.
+5. When the timer hits zero, click **Renew**. The first time, the wallet approves the session key. The key signs the UserOperation. Another 1 tUSD8 moves, and another 0.01 tUSD8 pays the fee.
+6. Click **Cancel**, then **Show why a renewal stops**. The revert is `SubscriptionIsCancelled`.
 
 Aevum has no time warp. The form defaults to 120 seconds so a renewal fits in one sitting. The 30-day preset is the monthly plan. Trial defaults to 0, so subscribe pulls the first period. The spending cap stays 2 tUSD8 (`2000000` base units).
 
@@ -109,9 +110,12 @@ In another terminal, `npm run dev` and use the local page. The dev server forwar
 
 The subscriber account is a counterfactual Kernel account owned by the connected wallet. Move tUSD8 onto that account before subscribing. That transfer is a normal wallet transaction, so its fee is tQDAY. A single faucet claim is 5 tUSD8, and the form defaults the move to 3 tUSD8: one subscribe and one renewal.
 
-Subscribe, renew, and cancel are UserOperations sent to `https://bundler.qday.info`. QDay’s stablecoin paymaster at `0x8DdF5E51c470257642e2c17E43977901b1173eFa` reverts `validatePaymasterUserOp` unless the call is a plain tUSD8 transfer or a call to its identity registry `0xf45e7f39caba1d2055f613970575a7e7069636be`. It will not sponsor `SubscriptionManager`. The checkout therefore deposits 0.05 tQDAY onto the subscriber account’s EntryPoint balance and sends those UserOperations without a paymaster. The subscription pull is still tUSD8. The UserOperation approves one finite amount:
+Subscribe, renew, and cancel are UserOperations sent to `https://bundler.qday.info`. QDay’s stablecoin paymaster at `0x8DdF5E51c470257642e2c17E43977901b1173eFa` reverts `validatePaymasterUserOp` unless the call is a plain tUSD8 transfer or a call to its identity registry `0xf45e7f39caba1d2055f613970575a7e7069636be`. It has no allowlist function, so the checkout deploys `SubscriptionPaymaster` instead. That contract sponsors only subscribe, renew, cancel, and the finite tUSD8 approvals those calls need. After the call it pulls 0.01 tUSD8 (`10000` base units) from the subscriber. The EntryPoint still spends tQDAY, from the paymaster's own deposit. The subscription pull is still tUSD8. The UserOperation approves two finite amounts:
 
-- `cap × 2` to `SubscriptionManager`: the first charge and one renewal, even when the session key expires in 365 days. A 2-minute period no longer pre-approves a year of pulls. A later renewal tops the allowance back up to that same finite amount only when the remainder cannot cover another period. The manager rejects `type(uint256).max`.
+- `cap × 2` to `SubscriptionManager`: the first charge and one renewal, even when the session key expires in 365 days. A 2-minute period no longer pre-approves a year of pulls. A later renewal tops the allowance back up to that same finite amount only when the remainder cannot cover another period. The manager rejects `type(uint256).max`. The renew policy rejects an approval above 20 tUSD8 (`20000000`).
+- `100000` (0.1 tUSD8) to the paymaster, which covers ten network fees.
+
+The session key is a private key kept in this browser, never in the repository. Subscribe registers its address. The first renewal asks the owner to approve a Kernel permission: the key may call `execute`, and `RenewOnlyPolicy` allows only `renewSubscription` plus that finite manager approval. The key signs the UserOperation. Later renewals do not ask the wallet again. Cancel stays on the owner wallet and revokes the key in the registry. The ECDSA signer module is the one already on Aevum, `0x6A6F069E2a08c2468e7724Ab3250CdBFBA14D4FF`. The root validator is not replaced.
 
 `createPlan` stays a merchant wallet transaction. Its fee is tQDAY. The merchant view lists plans, subscriptions, and renewal logs from the live manager. `npm run webhook` is the signed inbox described above.
 

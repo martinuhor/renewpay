@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatEther, getAddress, isAddress, isHex, type Address, type Hex } from "viem";
+import { formatEther, isHex, type Address, type Hex } from "viem";
 import {
   cancel,
-  depositGas,
   formatChainError,
   fundSubscriber,
   readBalances,
@@ -20,7 +19,6 @@ import {
   formatPeriod,
   formatTusd,
   parseTusdInput,
-  randomSessionKey,
   subscriptionAllowance,
   subscriptionIdFor,
 } from "./lib/billing";
@@ -28,25 +26,17 @@ import {
   DEMO_CAP,
   DEMO_FUND,
   DEMO_GAS_DEPOSIT,
+  SPONSOR_FEE,
   SUBSCRIPTION_MANAGER,
   YEAR_SECONDS,
   explorerAddress,
   explorerTx,
 } from "./lib/chain";
+import { deployPaymaster, deployPolicy, fundPaymaster, rotateSessionSigner, savedPaymaster, savedPolicy, sessionSigner } from "./lib/sponsorship";
 import { DEMO_CANCELLED_KEY, DEMO_FUNDED_KEY, DEMO_PLAN_KEY, DEMO_RENEWED_KEY, DEMO_SUBSCRIPTION_KEY, markDemo } from "./lib/demo";
-
-const SESSION_KEY = "renewpay.sessionKey";
 
 function short(value: string): string {
   return `${value.slice(0, 8)}…${value.slice(-4)}`;
-}
-
-function loadSessionKey(): Address {
-  const saved = localStorage.getItem(SESSION_KEY);
-  if (saved && isAddress(saved)) return getAddress(saved);
-  const created = randomSessionKey();
-  localStorage.setItem(SESSION_KEY, created);
-  return created;
 }
 
 export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvider; owner: Address | null }) {
@@ -56,6 +46,8 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   const [expiryDays, setExpiryDays] = useState("365");
   const [fund, setFund] = useState(DEMO_FUND.toString());
   const [sessionKey, setSessionKey] = useState<Address | null>(null);
+  const [policy, setPolicy] = useState<Address | null>(null);
+  const [paymaster, setPaymaster] = useState<Address | null>(null);
   const [subscriber, setSubscriber] = useState<Address | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [subscriptionId, setSubscriptionId] = useState<Hex | null>(null);
@@ -72,7 +64,9 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   const [clock, setClock] = useState(() => Math.floor(Date.now() / 1000));
 
   useEffect(() => {
-    setSessionKey(loadSessionKey());
+    setSessionKey(sessionSigner().address);
+    setPolicy(savedPolicy());
+    setPaymaster(savedPaymaster());
     const saved = localStorage.getItem(DEMO_PLAN_KEY) ?? "";
     setPlanId(saved);
     if (!isHex(saved) || saved.length !== 66) return;
@@ -101,10 +95,11 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         const address = await account.getAddress();
         if (cancelled) return;
         setSubscriber(address);
+        const paymasterAddress = savedPaymaster();
         const [walletBalances, accountBalances, gasDeposit] = await Promise.all([
           readBalances(owner),
           readBalances(address),
-          readDeposit(address),
+          paymasterAddress ? readDeposit(paymasterAddress) : Promise.resolve(0n),
         ]);
         if (cancelled) return;
         setOwnerBalance(walletBalances.token);
@@ -169,15 +164,48 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     }
   }
 
-  async function onDeposit() {
-    if (!ethereum || !owner || !subscriber) return;
+  async function onDeployPolicy() {
+    if (!ethereum || !owner) return;
     setPending(true);
     setError(null);
     try {
-      const hash = await depositGas({ ethereum, from: owner, account: subscriber });
+      const address = await deployPolicy(ethereum, owner);
+      setPolicy(address);
+      setTx(null);
+      setStatus("Renew policy deployed. Deploy the paymaster next.");
+    } catch (cause) {
+      setError(formatChainError(cause));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function onDeployPaymaster() {
+    if (!ethereum || !owner) return;
+    setPending(true);
+    setError(null);
+    try {
+      const address = await deployPaymaster(ethereum, owner);
+      setPaymaster(address);
+      setDeposit(0n);
+      setTx(null);
+      setStatus("Paymaster deployed. Fund it with 0.05 tQDAY. That is the float. Subscribers pay 0.01 tUSD8.");
+    } catch (cause) {
+      setError(formatChainError(cause));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function onFundPaymaster() {
+    if (!ethereum || !owner || !paymaster) return;
+    setPending(true);
+    setError(null);
+    try {
+      const hash = await fundPaymaster(ethereum, owner, paymaster);
       setTx(hash);
-      setDeposit(await readDeposit(subscriber));
-      setStatus("0.05 tQDAY is deposited for this account's network fees. Subscribe next.");
+      setDeposit(await readDeposit(paymaster));
+      setStatus("Paymaster funded. Move tUSD8, then subscribe. The network fee on subscribe is 0.01 tUSD8.");
     } catch (cause) {
       setError(formatChainError(cause));
     } finally {
@@ -218,7 +246,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         periodSeconds: plan.periodSeconds,
       });
       setTx(hash);
-      setStatus("Subscribed. The first 1 tUSD8 moved to the merchant. Wait for the timer, then renew.");
+      setStatus("Subscribed. The first 1 tUSD8 moved to the merchant, and 0.01 tUSD8 paid the network fee. Wait for the timer, then renew.");
       if (predictedId) {
         markDemo(DEMO_SUBSCRIPTION_KEY, predictedId);
         await refreshSubscription(predictedId);
@@ -231,21 +259,27 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   }
 
   async function onRenew() {
-    if (!ethereum || !subscriber || !subscriptionId || !subscription) return;
+    if (!ethereum || !owner || !subscriber || !subscriptionId || !subscription || !sessionKey) return;
     setPending(true);
     setError(null);
     try {
-      const hash = await renew({
+      const result = await renew({
         ethereum,
+        owner,
         subscriber,
         subscriptionId,
+        sessionKey: subscription.sessionKey,
         cap: subscription.spendingCapPerPeriod,
         expiry: subscription.expiry,
         periodSeconds: subscription.periodSeconds,
       });
-      setTx(hash);
+      setTx(result.hash);
       markDemo(DEMO_RENEWED_KEY, "1");
-      setStatus("Renewed. Another 1 tUSD8 moved to the merchant. Cancel next.");
+      setStatus(
+        result.firstEnable
+          ? "Renewed. The wallet approved this session key, and the key signed the renewal. Another 1 tUSD8 moved. The network fee was 0.01 tUSD8."
+          : "Renewed. The session key signed this one, with no extra wallet approval. Another 1 tUSD8 moved.",
+      );
       await refreshSubscription(subscriptionId);
     } catch (cause) {
       setError(formatChainError(cause));
@@ -262,7 +296,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
       const hash = await cancel(ethereum, subscriptionId);
       setTx(hash);
       markDemo(DEMO_CANCELLED_KEY, "1");
-      setStatus("Cancelled. The network fee came from the tQDAY deposit. Click Show why a renewal stops.");
+      setStatus("Cancelled. The network fee was 0.01 tUSD8. The session key is revoked. Click Show why a renewal stops.");
       await refreshSubscription(subscriptionId);
     } catch (cause) {
       setError(formatChainError(cause));
@@ -291,7 +325,20 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     <div className="grid">
       <section className="card">
         <h2>Authorize and pay</h2>
-        <p className="lede">The same wallet owns the subscriber account. Deposit 0.05 tQDAY so the account can pay its own network fee, then subscribe. The charge itself is 1 tUSD8.</p>
+        <p className="lede">The same wallet owns the subscriber account. Deploy the renew policy and the paymaster once, fund the paymaster with 0.05 tQDAY, then subscribe. The charge is 1 tUSD8. The network fee is 0.01 tUSD8.</p>
+        <div className="actions">
+          <button className="ghost" type="button" disabled={pending || !owner || Boolean(policy)} onClick={() => void onDeployPolicy()}>
+            {policy ? "Policy deployed" : "Deploy renew policy"}
+          </button>
+          <button className="ghost" type="button" disabled={pending || !owner || !policy || Boolean(paymaster)} onClick={() => void onDeployPaymaster()}>
+            {paymaster ? "Paymaster deployed" : "Deploy paymaster"}
+          </button>
+          <button className="primary" type="button" disabled={pending || !paymaster} onClick={() => void onFundPaymaster()}>
+            Fund paymaster {formatEther(DEMO_GAS_DEPOSIT)} tQDAY
+          </button>
+        </div>
+        {policy ? <p className="mono">Renew policy {policy}</p> : null}
+        {paymaster ? <p className="mono">Paymaster {paymaster}</p> : null}
         <label>
           Plan id
           <input value={planId} onChange={(event) => setPlanId(event.target.value.trim())} spellCheck={false} />
@@ -312,19 +359,15 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
           </dl>
         ) : null}
         <label>
-          Session key. The chain records this address with the cap and the expiry. Cancel revokes it.
+          Session key. This browser holds the private key. The chain records the address, the cap, and the expiry. Cancel revokes it.
           <input readOnly value={sessionKey ?? ""} />
         </label>
-        <p className="note">A renewal is collected only if this key is still active, the period is due, the price is within the cap, and the allowance is finite. The wallet signs the account operation. The contract enforces the key.</p>
+        <p className="note">The first renewal asks the wallet to approve this key. After that, the key signs renewals itself, and it can only call renew. The price still has to fit the cap, the period has to be due, and the allowance stays finite.</p>
         <div className="actions">
           <button
             className="ghost"
             type="button"
-            onClick={() => {
-              const next = randomSessionKey();
-              localStorage.setItem(SESSION_KEY, next);
-              setSessionKey(next);
-            }}
+            onClick={() => setSessionKey(rotateSessionSigner())}
           >
             New session key
           </button>
@@ -352,8 +395,10 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
           <dd>{native === null ? "—" : formatEther(native)}</dd>
           <dt>Subscriber tUSD8</dt>
           <dd>{subscriberBalance === null ? "—" : formatTusd(subscriberBalance)}</dd>
-          <dt>Gas deposit, tQDAY</dt>
+          <dt>Paymaster float, tQDAY</dt>
           <dd>{deposit === null ? "—" : formatEther(deposit)}</dd>
+          <dt>Network fee</dt>
+          <dd>{formatTusd(SPONSOR_FEE)} tUSD8</dd>
         </dl>
         <label>
           Move tUSD8 onto the subscriber account
@@ -362,10 +407,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         <p className="warn">That transfer is a wallet transaction, so its network fee is tQDAY. Default is 3 tUSD8: the first period and one renewal. Do not move it again if the account already holds 3 tUSD8.</p>
         <div className="actions">
           <button className="ghost" type="button" disabled={pending || !subscriber} onClick={() => void onFund()}>Move 3 tUSD8</button>
-          <button className="primary" type="button" disabled={pending || !subscriber} onClick={() => void onDeposit()}>
-            Deposit {formatEther(DEMO_GAS_DEPOSIT)} tQDAY
-          </button>
-          <button className="primary" type="button" disabled={pending || !plan || !subscriber || deposit === 0n} onClick={() => void onSubscribe()}>
+          <button className="primary" type="button" disabled={pending || !plan || !subscriber || !paymaster || deposit === 0n} onClick={() => void onSubscribe()}>
             {pending ? "Working…" : "Subscribe"}
           </button>
         </div>

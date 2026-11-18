@@ -167,10 +167,12 @@ export function subscribeCalls(input: {
   expiry: bigint;
   now: bigint;
   periodSeconds: bigint;
+  paymaster: Address;
 }): { calls: Call[]; subscriptionAllowance: bigint } {
   const allowance = subscriptionAllowance(input.cap, input.now, input.expiry, input.periodSeconds);
   const calls = [
     approve(SUBSCRIPTION_MANAGER, allowance),
+    approve(input.paymaster, paymasterGasAllowance()),
     managerCall("subscribe", [input.planId, input.sessionKey, input.cap, input.expiry]),
   ];
   assertFiniteApprovals(calls);

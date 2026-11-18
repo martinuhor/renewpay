@@ -9,7 +9,6 @@ import {
   AEVUM_CHAIN_ID,
   ENTRY_POINT,
   SESSION_KEY_REGISTRY,
-  STABLECOIN_PAYMASTER,
   SUBSCRIPTION_MANAGER,
   TUSD8,
   explorerAddress,
@@ -74,7 +73,6 @@ export function App() {
         <a className="pill" href={explorerAddress(SUBSCRIPTION_MANAGER)}>Manager {short(SUBSCRIPTION_MANAGER)}</a>
         <a className="pill" href={explorerAddress(SESSION_KEY_REGISTRY)}>Registry {short(SESSION_KEY_REGISTRY)}</a>
         <a className="pill" href={explorerAddress(TUSD8)}>tUSD8 {short(TUSD8)}</a>
-        <a className="pill" href={explorerAddress(STABLECOIN_PAYMASTER)}>Paymaster {short(STABLECOIN_PAYMASTER)}</a>
         <a className="pill" href={explorerAddress(ENTRY_POINT)}>EntryPoint {short(ENTRY_POINT)}</a>
         <span className="pill">{AEVUM_BUNDLER}</span>
       </div>

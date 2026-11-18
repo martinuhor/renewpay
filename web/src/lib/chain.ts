@@ -35,9 +35,23 @@ export const KERNEL_FACTORY = getAddress("0xaac5D4240AF87249B3f71BC8E4A2cae074A3
 export const KERNEL_META_FACTORY = getAddress("0x007cb4a07296b53ea5e53d043888230797b8fd01");
 export const KERNEL_ECDSA_VALIDATOR = getAddress("0x845ADb2C711129d4f3966735eD98a9F09fC4cE57");
 
-/** Gas limits taken from UserOperations the paymaster has already accepted. */
-export const PAYMASTER_VERIFICATION_GAS = 150_000n;
+/** Gas the subscriber paymaster may spend while it checks the call and pulls its fee. */
+export const PAYMASTER_VERIFICATION_GAS = 300_000n;
 export const PAYMASTER_POST_OP_GAS = 200_000n;
+
+/** Fixed UserOperation gas. Enable-mode installs the session key during validation. */
+export const USEROP_CALL_GAS = 700_000n;
+export const USEROP_VERIFICATION_GAS = 1_000_000n;
+export const USEROP_PRE_VERIFICATION_GAS = 150_000n;
+
+/** Kernel v3.1 `execute` selector. The session key is allowed to call only this. */
+export const EXECUTE_SELECTOR = "0xe9ae5c53" as const;
+
+/** Already on Aevum. Session keys sign through this module. One owner per permission id. */
+export const ECDSA_SIGNER = getAddress("0x6A6F069E2a08c2468e7724Ab3250CdBFBA14D4FF");
+
+/** Flat tUSD8 the paymaster pulls after a sponsored UserOperation. 10000 = 0.01 tUSD8. */
+export const SPONSOR_FEE = 10_000n;
 
 /**
  * Finite tUSD8 the subscriber approves to the paymaster.

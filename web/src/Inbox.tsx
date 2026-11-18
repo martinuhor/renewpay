@@ -57,7 +57,7 @@ export function Inbox({ merchant }: { merchant: Address | null }) {
       <h3>Signed webhook inbox</h3>
       {!localInbox ? (
         <p className="lede">
-          The chain lists above are enough for the five clicks. The signed inbox stays on your machine. Run <code>cd web && npm run webhook</code>, then open the checkout with <code>npm run dev</code>. This page does not call it.
+          The chain lists above are enough for the demo clicks. The signed inbox stays on your machine. Run <code>cd web && npm run webhook</code>, then open the checkout with <code>npm run dev</code>. This page does not call it.
         </p>
       ) : offline || events === null ? (
         <p className="lede">

@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "tsx --test src/lib/billing.test.ts src/lib/logs.test.ts src/lib/webhook.test.ts src/lib/account.test.ts",
+    "test": "tsx --test src/lib/billing.test.ts src/lib/logs.test.ts src/lib/webhook.test.ts src/lib/account.test.ts src/lib/sponsorship.test.ts",
     "webhook": "tsx src/webhook-server.ts"
   },
   "dependencies": {

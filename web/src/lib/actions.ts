@@ -1,26 +1,23 @@
 import { getAddress, parseAbiItem, type Address, type Hash, type Hex } from "viem";
 import { erc20Abi, managerAbi } from "./abi";
-import { ensureAevum, formatChainError, publicClient, subscriberAccount, userOpClient, walletClientFor } from "./account";
+import { ensureAevum, formatChainError, publicClient, walletClientFor } from "./account";
 import {
   cancelCalls,
   finiteFund,
   managerAllowanceForRenew,
-  paymasterGasAllowance,
   renewCalls,
   subscribeCalls,
   subscriptionAllowance,
   type Call,
 } from "./billing";
 import {
-  DEMO_GAS_DEPOSIT,
   DEPLOY_BLOCK,
   ENTRY_POINT,
-  aevum,
-  STABLECOIN_PAYMASTER,
   SUBSCRIPTION_MANAGER,
   TUSD8,
 } from "./chain";
 import { logWindows, type LogWindow } from "./logs";
+import { requirePaymaster, sendOwnerOperation, sendSessionRenewal, sessionSigner } from "./sponsorship";
 
 const planCreated = parseAbiItem(
   "event PlanCreated(bytes32 indexed planId, address indexed merchant, uint256 amount, uint256 periodSeconds, uint256 trialSeconds, string metadataURI)",
@@ -103,16 +100,7 @@ function asSubscription(value: unknown): Subscription {
 
 async function sendUserOperation(ethereum: EthereumProvider, calls: readonly Call[]): Promise<Hash> {
   await ensureAevum(ethereum);
-  const account = await subscriberAccount(ethereum);
-  const deposit = await readDeposit(await account.getAddress());
-  if (deposit === 0n) {
-    throw new Error("Deposit 0.05 tQDAY for gas first. The stablecoin paymaster does not sponsor this contract.");
-  }
-  const bundler = userOpClient(account);
-  const callData = await account.encodeCalls(calls.map((call) => ({ to: call.to, data: call.data, value: call.value })));
-  const hash = await bundler.sendUserOperation({ account, callData });
-  const receipt = await bundler.waitForUserOperationReceipt({ hash });
-  return receipt.receipt.transactionHash;
+  return sendOwnerOperation(ethereum, calls);
 }
 
 export async function readBalances(address: Address): Promise<{ token: bigint; native: bigint }> {
@@ -212,24 +200,6 @@ export async function readDeposit(account: Address): Promise<bigint> {
   });
 }
 
-/** Wallet transaction. Puts tQDAY on the subscriber account's EntryPoint balance. */
-export async function depositGas(input: { ethereum: EthereumProvider; from: Address; account: Address }): Promise<Hash> {
-  await ensureAevum(input.ethereum);
-  const wallet = walletClientFor(input.ethereum, input.from);
-  const hash = await wallet.writeContract({
-    account: input.from,
-    chain: aevum,
-    address: ENTRY_POINT,
-    abi: entryPointAbi,
-    functionName: "depositTo",
-    args: [input.account],
-    value: DEMO_GAS_DEPOSIT,
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") throw new Error("The gas deposit reverted.");
-  return hash;
-}
-
 export async function fundSubscriber(input: {
   ethereum: EthereumProvider;
   from: Address;
@@ -261,23 +231,37 @@ export async function subscribe(input: {
   periodSeconds: bigint;
 }): Promise<Hash> {
   const now = await blockTimestamp();
-  const { calls } = subscribeCalls({ ...input, now });
+  const { calls } = subscribeCalls({ ...input, now, paymaster: requirePaymaster() });
   return sendUserOperation(input.ethereum, calls);
 }
 
 export async function renew(input: {
   ethereum: EthereumProvider;
+  owner: Address;
   subscriber: Address;
   subscriptionId: Hex;
+  sessionKey: Address;
   cap: bigint;
   expiry: bigint;
   periodSeconds: bigint;
-}): Promise<Hash> {
+}): Promise<{ hash: Hash; firstEnable: boolean }> {
+  const signer = sessionSigner();
+  if (getAddress(signer.address) !== getAddress(input.sessionKey)) {
+    throw new Error("This browser does not hold that session key. Subscribe again with the key shown here.");
+  }
   const now = await blockTimestamp();
   const finite = subscriptionAllowance(input.cap, now, input.expiry, input.periodSeconds);
   const current = await readAllowance(input.subscriber, SUBSCRIPTION_MANAGER);
   const calls = renewCalls(input.subscriptionId, managerAllowanceForRenew(current, finite));
-  return sendUserOperation(input.ethereum, calls);
+  await ensureAevum(input.ethereum);
+  return sendSessionRenewal({
+    ethereum: input.ethereum,
+    owner: input.owner,
+    subscriber: input.subscriber,
+    calls,
+    sessionKey: signer.address,
+    privateKey: signer.privateKey,
+  });
 }
 
 export async function cancel(ethereum: EthereumProvider, subscriptionId: Hex): Promise<Hash> {
@@ -362,14 +346,6 @@ export async function merchantRenewals(merchant: Address): Promise<Renewal[]> {
     paidUntil: log.args.paidUntil ?? 0n,
     txHash: log.transactionHash as Hash,
   }));
-}
-
-export function paymasterSpender(): Address {
-  return STABLECOIN_PAYMASTER;
-}
-
-export function gasAllowance(): bigint {
-  return paymasterGasAllowance();
 }
 
 export { formatChainError };

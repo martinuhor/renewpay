@@ -82,6 +82,7 @@ describe("user operation calls", () => {
   const planId = planIdFor(merchant, 1_000_000n, period, 0n, "Pro");
 
   it("encodes subscribe against the live manager selectors", () => {
+    const paymaster = getAddress("0x000000000000000000000000000000000000dEa2");
     const { calls, subscriptionAllowance: allowance } = subscribeCalls({
       planId,
       sessionKey,
@@ -89,20 +90,23 @@ describe("user operation calls", () => {
       expiry,
       now,
       periodSeconds: period,
+      paymaster,
     });
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
     assert.equal(calls[0]?.to, TUSD8);
-    assert.equal(calls[1]?.to, SUBSCRIPTION_MANAGER);
+    assert.equal(calls[1]?.to, TUSD8);
+    assert.equal(calls[2]?.to, SUBSCRIPTION_MANAGER);
     assert.ok(calls[0]?.data.startsWith("0x095ea7b3"));
     assert.equal(BigInt(`0x${calls[0]?.data.slice(10 + 64)}`), allowance);
-    assert.ok(calls[1]?.data.startsWith("0x6ce07b7a"));
+    assert.equal(BigInt(`0x${calls[1]?.data.slice(10 + 64)}`), PAYMASTER_GAS_ALLOWANCE);
+    assert.ok(calls[2]?.data.startsWith("0x6ce07b7a"));
     assertFiniteApprovals(calls);
     const direct = encodeFunctionData({
       abi: managerAbi,
       functionName: "subscribe",
       args: [planId, sessionKey, 2_000_000n, expiry],
     });
-    assert.equal(calls[1]?.data, direct);
+    assert.equal(calls[2]?.data, direct);
     assert.ok(direct.startsWith("0x6ce07b7a"));
   });
 
