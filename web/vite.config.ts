@@ -1,27 +1,8 @@
-import { readFileSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
 import type { Connect } from "vite";
-import { defineConfig, type ProxyOptions } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { GET, POST } from "./api/events/route";
-
-function inboxSecret(): string {
-  try {
-    return readFileSync(new URL("./.webhook/secret", import.meta.url), "utf8").trim();
-  } catch {
-    return "";
-  }
-}
-
-const inboxProxy: ProxyOptions = {
-  target: "http://127.0.0.1:8787",
-  configure(proxy) {
-    proxy.on("proxyReq", (proxyReq) => {
-      const secret = inboxSecret();
-      if (secret) proxyReq.setHeader("x-renewpay-inbox", secret);
-    });
-  },
-};
 
 function readRequestBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -50,20 +31,24 @@ function eventsMiddleware(): Connect.NextHandleFunction {
     }
     try {
       const host = req.headers.host ?? "127.0.0.1:5173";
+      const headers = new Headers();
+      const contentType = req.headers["content-type"];
+      const feed = req.headers["x-renewpay-feed"];
+      if (typeof contentType === "string") headers.set("content-type", contentType);
+      if (typeof feed === "string") headers.set("x-renewpay-feed", feed);
       const request = new Request(`http://${host}${url}`, {
         method: req.method,
-        headers: { "content-type": req.headers["content-type"] ?? "application/json" },
+        headers,
         body: req.method === "POST" ? await readRequestBody(req) : undefined,
       });
       const response = req.method === "POST" ? await POST(request) : await GET(request);
       res.statusCode = response.status;
       response.headers.forEach((value, key) => res.setHeader(key, value));
       res.end(Buffer.from(await response.arrayBuffer()));
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "The signed feed failed.";
-      res.statusCode = message === "too large" ? 413 : 500;
+    } catch {
+      res.statusCode = 500;
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ error: message === "too large" ? "The body is too large." : "The signed feed failed." }));
+      res.end(JSON.stringify({ error: "The signed feed failed." }));
     }
   };
 }
@@ -84,7 +69,6 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 5173,
-    proxy: { "/inbox": inboxProxy },
   },
   build: { chunkSizeWarningLimit: 800 },
 });

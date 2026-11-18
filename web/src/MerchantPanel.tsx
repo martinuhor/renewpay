@@ -157,11 +157,11 @@ export function MerchantPanel({ ethereum, merchant }: { ethereum?: EthereumProvi
         </div>
         {status ? <p className="note">{status}</p> : null}
         {error ? <p className="error">{error}</p> : null}
-        <Inbox merchant={merchant} />
+        <Inbox />
       </section>
       <section className="card">
         <h2>Plans and renewals</h2>
-        <SignedFeed merchant={merchant} />
+        <SignedFeed ethereum={ethereum} merchant={merchant} />
         <Notices merchant={merchant} subscriptions={subscriptions} renewals={renewals} />
         <div className="list">
           {plans.length === 0 ? <p className="lede">No plans from this merchant yet.</p> : null}

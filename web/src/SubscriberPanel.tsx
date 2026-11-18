@@ -353,6 +353,9 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         </div>
         {policy ? <p className="mono">Renew policy {policy}</p> : null}
         {paymaster ? <p className="mono">Paymaster {paymaster}</p> : null}
+        <p className="lede">
+          Deploy renew policy sends the bytecode compiled from <a href="https://github.com/martinuhor/renewpay/blob/cursor/week2-checkout-a136/src/RenewOnlyPolicy.sol">RenewOnlyPolicy.sol</a>. Deploy paymaster sends the bytecode compiled from <a href="https://github.com/martinuhor/renewpay/blob/cursor/week2-checkout-a136/src/SubscriptionPaymaster.sol">SubscriptionPaymaster.sol</a>. Your wallet signs those transactions and the 0.05 tQDAY fund.
+        </p>
         <label>
           Plan id
           <input value={planId} onChange={(event) => setPlanId(event.target.value.trim())} spellCheck={false} />
