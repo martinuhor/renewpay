@@ -337,7 +337,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
           <input value={expiryDays} onChange={(event) => setExpiryDays(event.target.value)} inputMode="numeric" />
         </label>
         <div className="note">
-          Subscription allowance {allowancePreview ?? "—"} tUSD8. That figure is the cap multiplied by the periods until expiry, and it is finite.
+          Subscription allowance {allowancePreview ?? "—"} tUSD8. That is two periods at the spending cap. It stays finite, and the session key can still last until the expiry above.
         </div>
         {subscriber ? (
           <p className="mono">Subscriber account {subscriber}</p>

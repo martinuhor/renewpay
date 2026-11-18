@@ -111,7 +111,7 @@ The subscriber account is a counterfactual Kernel account owned by the connected
 
 Subscribe, renew, and cancel are UserOperations sent to `https://bundler.qday.info`. QDay’s stablecoin paymaster at `0x8DdF5E51c470257642e2c17E43977901b1173eFa` reverts `validatePaymasterUserOp` unless the call is a plain tUSD8 transfer or a call to its identity registry `0xf45e7f39caba1d2055f613970575a7e7069636be`. It will not sponsor `SubscriptionManager`. The checkout therefore deposits 0.05 tQDAY onto the subscriber account’s EntryPoint balance and sends those UserOperations without a paymaster. The subscription pull is still tUSD8. The UserOperation approves one finite amount:
 
-- `cap × periods until expiry` to `SubscriptionManager`, the same finite allowance the CLI uses. The manager rejects `type(uint256).max`.
+- `cap × 2` to `SubscriptionManager`: the first charge and one renewal, even when the session key expires in 365 days. A 2-minute period no longer pre-approves a year of pulls. A later renewal tops the allowance back up to that same finite amount only when the remainder cannot cover another period. The manager rejects `type(uint256).max`.
 
 `createPlan` stays a merchant wallet transaction. Its fee is tQDAY. The merchant view lists plans, subscriptions, and renewal logs from the live manager. `npm run webhook` is the signed inbox described above.
 

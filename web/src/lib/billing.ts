@@ -79,17 +79,23 @@ export function subscriptionIdFor(subscriber: Address, planId: Hex, sessionKey: 
 }
 
 /**
- * Same finite allowance as the CLI: `cap * periodsUntilExpiry`.
- * Refuses zero and `type(uint256).max`.
+ * Periods the checkout pre-approves. Two covers the first charge and one renewal.
+ * The session key can expire later. A year of 2-minute periods is not pre-approved.
+ */
+export const APPROVED_PERIODS = 2n;
+
+/**
+ * Finite allowance for the next few pulls: `cap * APPROVED_PERIODS`.
+ * Refuses zero and `type(uint256).max`. Expiry is checked so a dead session key is not funded.
  */
 export function subscriptionAllowance(cap: bigint, now: bigint, expiry: bigint, periodSeconds: bigint): bigint {
   if (cap <= 0n) throw new Error("Spending cap must be greater than zero.");
   if (periodSeconds <= 0n) throw new Error("Billing period must be greater than zero.");
   if (expiry <= now) throw new Error("Expiry must be in the future.");
-  const periods = (expiry - now + periodSeconds - 1n) / periodSeconds;
-  if (periods <= 0n) throw new Error("Expiry does not cover a billing period.");
-  if (periods > (MAX_UINT256 - 1n) / cap) throw new Error("That cap and expiry would overflow the allowance.");
-  const allowance = cap * periods;
+  const covered = (expiry - now + periodSeconds - 1n) / periodSeconds;
+  if (covered <= 0n) throw new Error("Expiry does not cover a billing period.");
+  if (APPROVED_PERIODS > (MAX_UINT256 - 1n) / cap) throw new Error("That cap would overflow the allowance.");
+  const allowance = cap * APPROVED_PERIODS;
   if (allowance <= 0n || allowance >= MAX_UINT256) {
     throw new Error("Refusing an unlimited tUSD8 allowance.");
   }
@@ -188,8 +194,14 @@ export function cancelCalls(subscriptionId: Hex): Call[] {
   return calls;
 }
 
-/** When the live allowance is unlimited, replace it before a renewal pull. */
+/**
+ * Replace the manager allowance only when it cannot cover another pull.
+ * One pull is at most the per-period cap. A still-sufficient balance is left alone.
+ */
 export function managerAllowanceForRenew(current: bigint, finite: bigint): bigint | null {
+  if (finite <= 0n || finite >= MAX_UINT256) throw new Error("Refusing an unlimited tUSD8 allowance.");
   if (current >= MAX_UINT256) return finite;
-  return null;
+  const onePeriod = finite / APPROVED_PERIODS;
+  if (onePeriod > 0n && current >= onePeriod) return null;
+  return finite;
 }

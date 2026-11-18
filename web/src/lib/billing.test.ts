@@ -49,13 +49,17 @@ describe("allowances", () => {
   const period = 2_592_000n;
   const expiry = now + 365n * 24n * 60n * 60n;
 
-  it("uses cap times the number of periods and stays finite", () => {
+  it("approves two periods of the cap, including a year of 2-minute periods", () => {
     const cap = 2_000_000n;
-    const periods = (expiry - now + period - 1n) / period;
     const allowance = subscriptionAllowance(cap, now, expiry, period);
-    assert.equal(allowance, cap * periods);
-    assert.ok(allowance < MAX_UINT256);
-    assert.ok(allowance > cap);
+    assert.equal(allowance, cap * 2n);
+    const shortPeriod = 120n;
+    const demo = subscriptionAllowance(cap, now, expiry, shortPeriod);
+    assert.equal(demo, 4_000_000n);
+    const yearOfShortPeriods = (expiry - now + shortPeriod - 1n) / shortPeriod;
+    assert.ok(yearOfShortPeriods > 100_000n);
+    assert.ok(demo < cap * yearOfShortPeriods);
+    assert.ok(demo < MAX_UINT256);
   });
 
   it("refuses an unlimited allowance", () => {
@@ -116,6 +120,9 @@ describe("user operation calls", () => {
     assertFiniteApprovals(cancel);
     assert.equal(managerAllowanceForRenew(MAX_UINT256, 4_000_000n), 4_000_000n);
     assert.equal(managerAllowanceForRenew(4_000_000n, 4_000_000n), null);
+    assert.equal(managerAllowanceForRenew(2_000_000n, 4_000_000n), null);
+    assert.equal(managerAllowanceForRenew(1_999_999n, 4_000_000n), 4_000_000n);
+    assert.throws(() => managerAllowanceForRenew(0n, MAX_UINT256), /unlimited/i);
   });
 
   it("rejects the zero session key", () => {
