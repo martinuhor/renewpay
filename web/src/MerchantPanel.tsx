@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Address, Hash, Hex } from "viem";
 import { Inbox } from "./Inbox";
+import { Notices } from "./Notices";
 import { createPlan, formatChainError, merchantPlans, merchantRenewals, merchantSubscriptions, type Plan, type Renewal, type Subscription } from "./lib/actions";
 import { formatPeriod, formatTusd, parseTusdInput, planIdFor } from "./lib/billing";
 import {
@@ -95,10 +96,10 @@ export function MerchantPanel({ ethereum, merchant }: { ethereum?: EthereumProvi
   return (
     <div className="grid">
       <section className="card">
-        <h2>Create a plan</h2>
-        <p className="lede">Leave this at 1 tUSD8 every 2 minutes. Creating a plan is a wallet transaction, so its fee is tQDAY. {previewAmount}</p>
+        <h2>Publish a plan</h2>
+        <p className="lede">1 tUSD8, billed every 2 minutes, so a renewal fits in one sitting. The price is copied onto the subscription and cannot be edited. {previewAmount}</p>
         <label>
-          Amount, base units (1000000 = 1 tUSD8)
+          Price in base units. 1000000 is 1 tUSD8. Leave it.
           <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="numeric" />
         </label>
         <label>
@@ -130,6 +131,7 @@ export function MerchantPanel({ ethereum, merchant }: { ethereum?: EthereumProvi
       </section>
       <section className="card">
         <h2>Plans and renewals</h2>
+        <Notices merchant={merchant} subscriptions={subscriptions} renewals={renewals} />
         <div className="list">
           {plans.length === 0 ? <p className="lede">No plans from this merchant yet.</p> : null}
           {plans.map((item) => (

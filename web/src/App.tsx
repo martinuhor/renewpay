@@ -58,10 +58,8 @@ export function App() {
           <p className="tag live">QDay Aevum · chain {AEVUM_CHAIN_ID}</p>
           <h1 className="mark">RenewPay</h1>
           <p className="lede">
-            A merchant publishes a 1 tUSD8 plan. A subscriber authorizes a session key with a 2 tUSD8
-            per-period cap. Subscribe, renew, and cancel run as UserOperations. Their network fee is a
-            small tQDAY deposit, because QDay’s paymaster does not sponsor this contract. The payment
-            itself is tUSD8. Signing uses the connected wallet.
+            Recurring tUSD8 billing on Aevum. The merchant sets the price. The subscriber sets a cap
+            and an expiry. The chain collects each period, and the subscriber can stop the next one.
           </p>
         </div>
         <div className="wallet">

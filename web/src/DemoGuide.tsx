@@ -55,17 +55,17 @@ export function DemoGuide({ address }: { address: Address | null }) {
   const hasGas = native !== null && native > 0n;
   const planReady = plans > 0 || marks.planId.length === 66;
   const steps = [
-    { done: rightWallet && hasGas, text: `Connect ${short(DEMO_MERCHANT)}. That wallet already has the tQDAY for the two normal transactions and the tUSD8 for the subscription.` },
-    { done: planReady, text: "On Merchant, leave the form as it is (1 tUSD8, 120 seconds) and click Create plan. Confirm in the wallet. The fee is a little tQDAY." },
-    { done: marks.funded.length > 0 && marks.subscribed.length > 0, text: "Open Subscriber. Click Deposit 0.05 tQDAY, then Subscribe. The paymaster rejected this contract, so the network fee is that deposit. The 1 tUSD8 still moves to the merchant." },
-    { done: marks.renewed === "1", text: "When the Billing timer reaches zero, click Renew and confirm. Another 1 tUSD8 moves." },
-    { done: marks.cancelled === "1", text: "Click Cancel, then Show why a renewal stops. The reason should be SubscriptionIsCancelled." },
+    { done: rightWallet && hasGas, text: `Connect ${short(DEMO_MERCHANT)}. This wallet holds the tUSD8 for the charges and the tQDAY for the account’s network fees.` },
+    { done: planReady, text: "Merchant: leave the plan at 1 tUSD8 every 2 minutes and create it. The price is fixed once it is on chain." },
+    { done: marks.funded.length > 0 && marks.subscribed.length > 0, text: "Subscriber: deposit 0.05 tQDAY, then subscribe. The first 1 tUSD8 moves to the merchant. The session key’s cap is 2 tUSD8 per period." },
+    { done: marks.renewed === "1", text: "When the timer reaches zero, renew. Another 1 tUSD8 moves, still inside the cap." },
+    { done: marks.cancelled === "1", text: "Cancel, then show why a renewal stops. The chain answers SubscriptionIsCancelled." },
   ];
 
   return (
     <section className="card guide">
-      <h2>Do these five clicks</h2>
-      <p className="lede">One wallet plays both roles. You are the merchant. The subscriber is the smart account on the next tab. Leave the numbers alone.</p>
+      <h2>One subscription, start to finish</h2>
+      <p className="lede">One wallet is the merchant and the owner of the subscriber account. Leave the numbers alone. The payment is tUSD8. The smart account’s network fee is a 0.05 tQDAY deposit, because QDay’s paymaster only sponsors a plain tUSD8 transfer.</p>
       <ol className="steps">
         {steps.map((step, index) => (
           <li key={step.text}>

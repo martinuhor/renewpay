@@ -290,8 +290,8 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   return (
     <div className="grid">
       <section className="card">
-        <h2>Subscribe</h2>
-        <p className="lede">Use the same wallet. The 3 tUSD8 is already on the subscriber account. QDay’s paymaster refused the subscribe call, so deposit 0.05 tQDAY and try Subscribe again. The subscription payment is still tUSD8.</p>
+        <h2>Authorize and pay</h2>
+        <p className="lede">The same wallet owns the subscriber account. Deposit 0.05 tQDAY so the account can pay its own network fee, then subscribe. The charge itself is 1 tUSD8.</p>
         <label>
           Plan id
           <input value={planId} onChange={(event) => setPlanId(event.target.value.trim())} spellCheck={false} />
@@ -312,9 +312,10 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
           </dl>
         ) : null}
         <label>
-          Session key
+          Session key. The chain records this address with the cap and the expiry. Cancel revokes it.
           <input readOnly value={sessionKey ?? ""} />
         </label>
+        <p className="note">A renewal is collected only if this key is still active, the period is due, the price is within the cap, and the allowance is finite. The wallet signs the account operation. The contract enforces the key.</p>
         <div className="actions">
           <button
             className="ghost"
@@ -329,7 +330,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
           </button>
         </div>
         <label>
-          Spending cap per period, base units
+          Spending cap per period. 2000000 is 2 tUSD8. The plan price cannot exceed it.
           <input value={cap} onChange={(event) => setCap(event.target.value)} inputMode="numeric" />
         </label>
         <label>
