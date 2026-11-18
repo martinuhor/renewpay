@@ -5,6 +5,11 @@ broadcast/
 cli/node_modules/
 cli/dist/
 
+web/node_modules/
+web/dist/
+web/.webhook/
+web/.keeper/
+
 .env
 .env.*
 !.env.example
