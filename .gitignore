@@ -8,6 +8,7 @@ cli/dist/
 web/node_modules/
 web/dist/
 web/.webhook/
+web/.keeper/
 
 .env
 .env.*

@@ -319,6 +319,19 @@ export async function sendSessionRenewal(input: {
   return { hash: await submit(operation), firstEnable: !enabled };
 }
 
+export async function sessionPermissionEnabled(account: Address, policy: Address, sessionKey: Address): Promise<boolean> {
+  return permissionEnabled(account, permissionIdFor(policy, sessionKey));
+}
+
+export async function kernelEnableNonce(account: Address): Promise<number> {
+  const nonce = await publicClient.readContract({
+    address: account,
+    abi: kernelAbi,
+    functionName: "currentNonce",
+  });
+  return Number(nonce);
+}
+
 async function permissionEnabled(account: Address, permissionId: Hex): Promise<boolean> {
   const config = await publicClient.readContract({
     address: account,

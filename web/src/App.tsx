@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { getAddress, isAddress, type Address } from "viem";
-import { DemoGuide } from "./DemoGuide";
-import { Keeper } from "./Keeper";
 import { MerchantPanel } from "./MerchantPanel";
 import { SubscriberPanel } from "./SubscriberPanel";
 import { ensureAevum } from "./lib/account";
@@ -15,14 +13,11 @@ import {
   explorerAddress,
 } from "./lib/chain";
 
-type Tab = "merchant" | "subscriber";
-
 function short(value: string): string {
   return value.length > 12 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("merchant");
   const [address, setAddress] = useState<Address | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const ethereum = typeof window === "undefined" ? undefined : window.ethereum;
@@ -70,29 +65,22 @@ export function App() {
         </div>
       </header>
 
-      <div className="chain">
-        <a className="pill" href={explorerAddress(SUBSCRIPTION_MANAGER)}>Manager {short(SUBSCRIPTION_MANAGER)}</a>
-        <a className="pill" href={explorerAddress(SESSION_KEY_REGISTRY)}>Registry {short(SESSION_KEY_REGISTRY)}</a>
-        <a className="pill" href={explorerAddress(TUSD8)}>tUSD8 {short(TUSD8)}</a>
-        <a className="pill" href={explorerAddress(ENTRY_POINT)}>EntryPoint {short(ENTRY_POINT)}</a>
-        <span className="pill">{AEVUM_BUNDLER}</span>
-      </div>
+      <details className="card">
+        <summary>Contract addresses</summary>
+        <div className="chain">
+          <a className="pill" href={explorerAddress(SUBSCRIPTION_MANAGER)}>Manager {short(SUBSCRIPTION_MANAGER)}</a>
+          <a className="pill" href={explorerAddress(SESSION_KEY_REGISTRY)}>Registry {short(SESSION_KEY_REGISTRY)}</a>
+          <a className="pill" href={explorerAddress(TUSD8)}>tUSD8 {short(TUSD8)}</a>
+          <a className="pill" href={explorerAddress(ENTRY_POINT)}>EntryPoint {short(ENTRY_POINT)}</a>
+          <span className="pill">{AEVUM_BUNDLER}</span>
+        </div>
+      </details>
 
       {notice ? <p className="error">{notice}</p> : null}
       {!ethereum ? <p className="warn">Open this page in a browser with a wallet extension and sign with that wallet.</p> : null}
-      <DemoGuide address={address} />
-      <Keeper ethereum={ethereum} owner={address} />
 
-      <div className="tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === "merchant"} onClick={() => setTab("merchant")}>Merchant</button>
-        <button type="button" role="tab" aria-selected={tab === "subscriber"} onClick={() => setTab("subscriber")}>Subscriber</button>
-      </div>
-
-      {tab === "merchant" ? (
-        <MerchantPanel ethereum={ethereum} merchant={address} />
-      ) : (
-        <SubscriberPanel ethereum={ethereum} owner={address} />
-      )}
+      <SubscriberPanel ethereum={ethereum} owner={address} />
+      <MerchantPanel ethereum={ethereum} merchant={address} />
     </div>
   );
 }

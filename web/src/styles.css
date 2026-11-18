@@ -257,6 +257,7 @@ dd { margin: 0; overflow-wrap: anywhere; }
 
 .review strong { display: block; margin-bottom: 6px; }
 
+details.card, details summary { margin: 12px 0; cursor: pointer; }
 .inbox { margin-top: 18px; }
 .inbox code {
   font-family: "IBM Plex Mono", ui-monospace, monospace;

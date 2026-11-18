@@ -63,14 +63,14 @@ export function DemoGuide({ address }: { address: Address | null }) {
     { done: setupReady, text: "Subscriber: deploy the renew policy, deploy the paymaster, then fund the paymaster with 0.05 tQDAY." },
     { done: planReady, text: "Merchant: leave the plan at 1 tUSD8 every 2 minutes and create it. The price is fixed once it is on chain." },
     { done: marks.funded.length > 0 && marks.subscribed.length > 0, text: "Subscriber: move 3 tUSD8, then subscribe. The first 1 tUSD8 moves. The network fee is 0.01 tUSD8." },
-    { done: marks.renewed === "1", text: "Leave the page open. When the timer hits zero the keeper renews. The session key signs it. You do not click Renew." },
+    { done: marks.renewed === "1", text: "Arm the keeper once, save the file, and run npm run keeper. Then you can close this page. The session key signs renewSubscription only." },
     { done: marks.cancelled === "1", text: "Pause and revoke, then show why a renewal stops. The chain answers SubscriptionIsCancelled, and the tUSD8 allowance is 0." },
   ];
 
   return (
     <section className="card guide">
       <h2>One subscription, start to finish</h2>
-      <p className="lede">One wallet is the merchant and the owner of the subscriber account. Leave the numbers alone. The payment is tUSD8. The paymaster’s EntryPoint float is tQDAY, and the subscriber fee is 0.01 tUSD8. QDay’s paymaster does not sponsor SubscriptionManager. The keeper renews when the period is due, and the session key signs that renewal.</p>
+      <p className="lede">One wallet is the merchant and the owner of the subscriber account. Leave the numbers alone. The payment is tUSD8. The paymaster’s EntryPoint float is tQDAY, and the subscriber fee is 0.01 tUSD8. QDay’s paymaster does not sponsor SubscriptionManager. Arm the keeper once, then leave <code>npm run keeper</code> running. It renews after this page is closed.</p>
       <ol className="steps">
         {steps.map((step, index) => (
           <li key={step.text}>

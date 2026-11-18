@@ -23,6 +23,7 @@ import {
   subscriptionIdFor,
 } from "./lib/billing";
 import {
+  DEMO_AMOUNT,
   DEMO_CAP,
   DEMO_FUND,
   DEMO_GAS_DEPOSIT,
@@ -32,10 +33,44 @@ import {
   explorerAddress,
   explorerTx,
 } from "./lib/chain";
+import { Keeper } from "./Keeper";
 import { ReceiptList, StepProgress, type Receipt } from "./Receipts";
-import { paymasterGasAllowance } from "./lib/billing";
 import { deployPaymaster, deployPolicy, fundPaymaster, rotateSessionSigner, savedPaymaster, savedPolicy, sessionSigner } from "./lib/sponsorship";
 import { DEMO_CANCELLED_KEY, DEMO_FUNDED_KEY, DEMO_PLAN_KEY, DEMO_RENEWED_KEY, DEMO_SUBSCRIPTION_KEY, markDemo } from "./lib/demo";
+
+function SetupButtons({
+  pending,
+  owner,
+  policy,
+  paymaster,
+  onDeployPolicy,
+  onDeployPaymaster,
+  onFundPaymaster,
+  emphasizeNext = false,
+}: {
+  pending: boolean;
+  owner: Address | null;
+  policy: Address | null;
+  paymaster: Address | null;
+  onDeployPolicy: () => Promise<void>;
+  onDeployPaymaster: () => Promise<void>;
+  onFundPaymaster: () => Promise<void>;
+  emphasizeNext?: boolean;
+}) {
+  return (
+    <div className="actions">
+      <button className={emphasizeNext && !policy ? "primary" : "ghost"} type="button" disabled={pending || !owner || Boolean(policy)} onClick={() => void onDeployPolicy()}>
+        {policy ? "1. Policy deployed" : "1. Deploy renew policy"}
+      </button>
+      <button className={emphasizeNext && policy && !paymaster ? "primary" : "ghost"} type="button" disabled={pending || !owner || !policy || Boolean(paymaster)} onClick={() => void onDeployPaymaster()}>
+        {paymaster ? "2. Paymaster deployed" : "2. Deploy paymaster"}
+      </button>
+      <button className={emphasizeNext && policy && paymaster ? "primary" : "ghost"} type="button" disabled={pending || !paymaster} onClick={() => void onFundPaymaster()}>
+        3. Fund paymaster {formatEther(DEMO_GAS_DEPOSIT)} tQDAY
+      </button>
+    </div>
+  );
+}
 
 function short(value: string): string {
   return `${value.slice(0, 8)}…${value.slice(-4)}`;
@@ -46,7 +81,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   const [plan, setPlan] = useState<Plan | null>(null);
   const [cap, setCap] = useState(DEMO_CAP.toString());
   const [expiryDays, setExpiryDays] = useState("365");
-  const [fund, setFund] = useState(DEMO_FUND.toString());
+  const fund = DEMO_FUND.toString();
   const [sessionKey, setSessionKey] = useState<Address | null>(null);
   const [policy, setPolicy] = useState<Address | null>(null);
   const [paymaster, setPaymaster] = useState<Address | null>(null);
@@ -134,9 +169,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   }, [expiryDays, now]);
 
   let allowancePreview: string | null = null;
-  let capPreview = "—";
   try {
-    capPreview = formatTusd(parseTusdInput(cap));
     if (plan) allowancePreview = formatTusd(subscriptionAllowance(parseTusdInput(cap), now, expiry, plan.periodSeconds));
   } catch (cause) {
     allowancePreview = cause instanceof Error ? cause.message : null;
@@ -319,6 +352,8 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
     }
   }
 
+  const setupDone = Boolean(policy && paymaster && deposit !== null && deposit > 0n);
+  const needsFunds = subscriberBalance !== null && plan !== null && subscriberBalance < plan.amount;
   const renewReady = Boolean(subscription && !subscription.cancelled && BigInt(clock) >= subscription.paidUntil);
   const secondsLeft = subscription && !subscription.cancelled ? Number(subscription.paidUntil) - clock : 0;
 
@@ -338,31 +373,22 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
   return (
     <div className="grid">
       <section className="card">
-        <h2>Authorize and pay</h2>
-        <p className="lede">The paymaster’s EntryPoint float is tQDAY. Fund it once with 0.05 tQDAY. The subscriber fee on subscribe, renew, and cancel is 0.01 tUSD8. QDay’s paymaster does not sponsor SubscriptionManager.</p>
-        <div className="actions">
-          <button className="ghost" type="button" disabled={pending || !owner || Boolean(policy)} onClick={() => void onDeployPolicy()}>
-            {policy ? "Policy deployed" : "Deploy renew policy"}
-          </button>
-          <button className="ghost" type="button" disabled={pending || !owner || !policy || Boolean(paymaster)} onClick={() => void onDeployPaymaster()}>
-            {paymaster ? "Paymaster deployed" : "Deploy paymaster"}
-          </button>
-          <button className="primary" type="button" disabled={pending || !paymaster} onClick={() => void onFundPaymaster()}>
-            Fund paymaster {formatEther(DEMO_GAS_DEPOSIT)} tQDAY
-          </button>
-        </div>
-        {policy ? <p className="mono">Renew policy {policy}</p> : null}
-        {paymaster ? <p className="mono">Paymaster {paymaster}</p> : null}
-        <p className="lede">
-          Deploy renew policy sends the bytecode compiled from <a href="https://github.com/martinuhor/renewpay/blob/cursor/week2-checkout-a136/src/RenewOnlyPolicy.sol">RenewOnlyPolicy.sol</a>. Deploy paymaster sends the bytecode compiled from <a href="https://github.com/martinuhor/renewpay/blob/cursor/week2-checkout-a136/src/SubscriptionPaymaster.sol">SubscriptionPaymaster.sol</a>. Your wallet signs those transactions and the 0.05 tQDAY fund.
-        </p>
-        <label>
-          Plan id
-          <input value={planId} onChange={(event) => setPlanId(event.target.value.trim())} spellCheck={false} />
-        </label>
-        <div className="actions">
-          <button className="ghost" type="button" disabled={pending} onClick={() => void loadPlan()}>Load plan</button>
-        </div>
+        <h2>{setupDone ? "Subscribe" : "First visit"}</h2>
+        {setupDone ? (
+          <details>
+            <summary>Setup is done. The three confirms stay here, in order.</summary>
+            <SetupButtons pending={pending} owner={owner} policy={policy} paymaster={paymaster} onDeployPolicy={onDeployPolicy} onDeployPaymaster={onDeployPaymaster} onFundPaymaster={onFundPaymaster} />
+          </details>
+        ) : (
+          <>
+            <p className="lede">These three confirms happen once, in this order. The paymaster’s EntryPoint float is tQDAY. The subscriber fee is 0.01 tUSD8. QDay’s paymaster does not sponsor SubscriptionManager.</p>
+            <SetupButtons pending={pending} owner={owner} policy={policy} paymaster={paymaster} onDeployPolicy={onDeployPolicy} onDeployPaymaster={onDeployPaymaster} onFundPaymaster={onFundPaymaster} emphasizeNext />
+          </>
+        )}
+        <p className="lede">Choose the 1 tUSD8 plan. The review shows the cap, the fee, and the recipient. Then confirm once.</p>
+        <button className={plan?.amount === DEMO_AMOUNT ? "primary" : "ghost"} type="button" disabled={pending || !setupDone} onClick={() => void loadPlan()}>
+          {plan?.amount === DEMO_AMOUNT ? "1 tUSD8 plan selected" : "Choose the 1 tUSD8 plan"}
+        </button>
         {plan ? (
           <dl>
             <dt>Price</dt>
@@ -375,72 +401,62 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
             <dd>{plan.metadataURI}</dd>
           </dl>
         ) : null}
-        <label>
-          Session key. This browser holds the private key. The chain records the address, the cap, and the expiry. Pause revokes it.
-          <input readOnly value={sessionKey ?? ""} />
-        </label>
-        <p className="note">The first renewal asks the wallet to approve this key. After that, the key signs renewals itself, and it can only call renew. The price still has to fit the cap, the period has to be due, and the allowance stays finite.</p>
-        <div className="actions">
-          <button
-            className="ghost"
-            type="button"
-            onClick={() => setSessionKey(rotateSessionSigner())}
-          >
-            New session key
-          </button>
-        </div>
-        <label>
-          Spending cap per period. 2000000 is 2 tUSD8. The plan price cannot exceed it.
-          <input value={cap} onChange={(event) => setCap(event.target.value)} inputMode="numeric" />
-        </label>
-        <label>
-          Expiry, days from now
-          <input value={expiryDays} onChange={(event) => setExpiryDays(event.target.value)} inputMode="numeric" />
-        </label>
-        <div className="note">
-          Subscription allowance {allowancePreview ?? "—"} tUSD8. That is two periods at the spending cap. It stays finite, and the session key can still last until the expiry above.
-        </div>
-        {subscriber ? (
-          <p className="mono">Subscriber account {subscriber}</p>
-        ) : (
-          <p className="lede">Connect a wallet to derive the Kernel subscriber account.</p>
-        )}
-        <dl>
-          <dt>Wallet tUSD8</dt>
-          <dd>{ownerBalance === null ? "—" : formatTusd(ownerBalance)}</dd>
-          <dt>Wallet tQDAY</dt>
-          <dd>{native === null ? "—" : formatEther(native)}</dd>
-          <dt>Subscriber tUSD8</dt>
-          <dd>{subscriberBalance === null ? "—" : formatTusd(subscriberBalance)}</dd>
-          <dt>Paymaster float, tQDAY</dt>
-          <dd>{deposit === null ? "—" : formatEther(deposit)}</dd>
-          <dt>Network fee</dt>
-          <dd>{formatTusd(SPONSOR_FEE)} tUSD8</dd>
-        </dl>
-        <label>
-          Move tUSD8 onto the subscriber account
-          <input value={fund} onChange={(event) => setFund(event.target.value)} inputMode="numeric" />
-        </label>
-        <p className="warn">That transfer is a wallet transaction, so its network fee is tQDAY. Default is 3 tUSD8: the first period and one renewal. Do not move it again if the account already holds 3 tUSD8.</p>
         {plan && sessionKey ? (
           <div className="review">
-            <strong>Review before you sign</strong>
-            <div>Amount {formatTusd(plan.amount)} tUSD8</div>
-            <div>Period {formatPeriod(plan.periodSeconds)}</div>
+            <strong>Review before you confirm</strong>
+            <div>Plan {formatTusd(plan.amount)} tUSD8</div>
+            <div>Cap 2 tUSD8 per period</div>
+            <div>Fee {formatTusd(SPONSOR_FEE)} tUSD8</div>
             <div>Recipient {plan.merchant}</div>
-            <div>Spending cap {capPreview} tUSD8 per period</div>
-            <div>Allowance {allowancePreview ?? "—"} tUSD8, which is the cap times two. Paymaster approval {formatTusd(paymasterGasAllowance())} tUSD8. Neither is unlimited.</div>
-            <div>Network fee {formatTusd(SPONSOR_FEE)} tUSD8. The paymaster’s EntryPoint float is tQDAY. QDay’s paymaster does not sponsor SubscriptionManager.</div>
           </div>
         ) : null}
+        <details>
+          <summary>Balances, cap, and session key</summary>
+          <label>
+            Session key. This browser holds it. Pause revokes it.
+            <input readOnly value={sessionKey ?? ""} />
+          </label>
+          <div className="actions">
+            <button className="ghost" type="button" onClick={() => setSessionKey(rotateSessionSigner())}>New session key</button>
+          </div>
+          <label>
+            Plan id
+            <input value={planId} onChange={(event) => setPlanId(event.target.value.trim())} spellCheck={false} />
+          </label>
+          <label>
+            Spending cap per period. 2000000 is 2 tUSD8.
+            <input value={cap} onChange={(event) => setCap(event.target.value)} inputMode="numeric" />
+          </label>
+          <label>
+            Expiry, days from now
+            <input value={expiryDays} onChange={(event) => setExpiryDays(event.target.value)} inputMode="numeric" />
+          </label>
+          <div className="note">Allowance {allowancePreview ?? "—"} tUSD8. Cap times two. It stays finite.</div>
+          {subscriber ? <p className="mono">Subscriber account {subscriber}</p> : <p className="lede">Connect a wallet to derive the subscriber account.</p>}
+          <dl>
+            <dt>Wallet tUSD8</dt>
+            <dd>{ownerBalance === null ? "—" : formatTusd(ownerBalance)}</dd>
+            <dt>Wallet tQDAY</dt>
+            <dd>{native === null ? "—" : formatEther(native)}</dd>
+            <dt>Subscriber tUSD8</dt>
+            <dd>{subscriberBalance === null ? "—" : formatTusd(subscriberBalance)}</dd>
+            <dt>Paymaster float, tQDAY</dt>
+            <dd>{deposit === null ? "—" : formatEther(deposit)}</dd>
+          </dl>
+          <p className="lede">
+            The contracts are <a href="https://github.com/martinuhor/renewpay/blob/cursor/week2-checkout-a136/src/RenewOnlyPolicy.sol">RenewOnlyPolicy.sol</a> and <a href="https://github.com/martinuhor/renewpay/blob/cursor/week2-checkout-a136/src/SubscriptionPaymaster.sol">SubscriptionPaymaster.sol</a>.
+          </p>
+        </details>
         <StepProgress
           labels={["Approve the capped tUSD8 allowance", "Activate the subscription", "Receipt"]}
           active={subscribeStep}
         />
         <div className="actions">
-          <button className="ghost" type="button" disabled={pending || !subscriber} onClick={() => void onFund()}>Move 3 tUSD8</button>
-          <button className="primary" type="button" disabled={pending || !plan || !subscriber || !paymaster || deposit === 0n} onClick={() => void onSubscribe()}>
-            {pending ? "Working…" : "Sign subscription"}
+          {needsFunds ? (
+            <button className="ghost" type="button" disabled={pending || !subscriber} onClick={() => void onFund()}>Move 3 tUSD8</button>
+          ) : null}
+          <button className="primary" type="button" disabled={pending || !plan || !subscriber || !paymaster || deposit === 0n || needsFunds} onClick={() => void onSubscribe()}>
+            {pending ? "Working…" : "Confirm"}
           </button>
         </div>
         {predictedId ? <p className="mono">Subscription id {predictedId}</p> : null}
@@ -448,6 +464,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
         {tx ? <p><a href={explorerTx(tx)}>{explorerTx(tx)}</a></p> : null}
         {error ? <p className="error">{error}</p> : null}
         <ReceiptList receipts={receipts} />
+        <Keeper ethereum={ethereum} owner={owner} />
       </section>
       <section className="card">
         <h2>Billing</h2>
@@ -487,7 +504,7 @@ export function SubscriberPanel({ ethereum, owner }: { ethereum?: EthereumProvid
               ) : null}
             </div>
             {!subscription.cancelled && !renewReady ? (
-              <p className="note">Renew unlocks in {Math.max(secondsLeft, 0)}s. Leave this tab open.</p>
+              <p className="note">Next charge in {Math.max(secondsLeft, 0)}s. Arm the keeper above, then this page can close.</p>
             ) : null}
             {stopReason ? <p className="error">{stopReason}</p> : null}
           </>

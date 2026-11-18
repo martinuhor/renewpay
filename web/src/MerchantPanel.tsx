@@ -194,6 +194,7 @@ export function MerchantPanel({ ethereum, merchant }: { ethereum?: EthereumProvi
                     <strong>Next due {dueLabel}.</strong> {remaining <= 0 ? "Due now." : `Due in ${remaining}s.`}
                   </div>
                 )}
+                <div className="mono">Renewal {renewals.find((renewal) => renewal.subscriptionId === item.id)?.txHash ?? "No renewal yet."}</div>
                 <button
                   className="primary"
                   type="button"
